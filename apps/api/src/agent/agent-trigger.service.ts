@@ -1,5 +1,5 @@
 import { type Db, type FieldEntity, Prisma } from "@crm/db";
-import { PRIORITY } from "@crm/db/agent-tasks";
+import { PRIORITY, WORKSPACE_CONFIG_TASK } from "@crm/db/agent-tasks";
 import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
 import { RECORD_ID_COLUMNS } from "@crm/db/fields";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
@@ -360,6 +360,20 @@ export class AgentTriggerService {
 		if (queued > 0 || merged > 0) this.poke();
 
 		return { queued, merged };
+	}
+
+	async workspaceConfigRequested(versionId: string): Promise<void> {
+		await this.enqueue(
+			{
+				kind: WORKSPACE_CONFIG_TASK,
+				reason: "An agency described its business and asked for a CRM setup",
+				priority: PRIORITY.workspaceConfig,
+				budget: 1,
+				payload: { versionId },
+				subject: { path: ["versionId"], value: versionId },
+			},
+			true,
+		);
 	}
 
 	async meetingSoon(contactId: string, when: Date): Promise<void> {

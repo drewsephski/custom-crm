@@ -1,4 +1,5 @@
 export const TASK_KINDS = [
+	"workspace-config",
 	"brand",
 	"portrait",
 	"meeting-prep",
@@ -16,7 +17,10 @@ export const TASK_KINDS = [
 
 export type TaskKind = (typeof TASK_KINDS)[number];
 
+export const WORKSPACE_CONFIG_TASK = "workspace-config";
+
 export const DIRECT_KINDS = [
+	WORKSPACE_CONFIG_TASK,
 	"brand",
 	"portrait",
 	"slack-people-match",
@@ -62,4 +66,5 @@ export const PRIORITY = {
 	slackJoin: 950,
 	event: 700,
 	mcpDiscovery: 20,
+	workspaceConfig: 1000,
 } as const;

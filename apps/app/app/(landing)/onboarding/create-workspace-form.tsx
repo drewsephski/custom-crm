@@ -28,7 +28,7 @@ export function CreateWorkspaceForm() {
 	const create = useMutation(
 		trpc.workspaces.create.mutationOptions({
 			onSuccess: (workspace) => {
-				window.location.assign(`/${workspace.slug}`);
+				window.location.assign(`/${workspace.slug}/settings/setup`);
 			},
 			onError: (error) => toast.error(error.message),
 		}),

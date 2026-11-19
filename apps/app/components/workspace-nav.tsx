@@ -80,6 +80,7 @@ const SETTINGS: NavItem = {
 
 const SETTINGS_PAGES: { title: string; href: string }[] = [
 	{ title: "General", href: "/settings" },
+	{ title: "Workspace setup", href: "/settings/setup" },
 	{ title: "Tracking & Analytics", href: "/settings/tracking" },
 	{ title: "Connections", href: "/settings/connections" },
 	{ title: "Currencies", href: "/settings/currencies" },

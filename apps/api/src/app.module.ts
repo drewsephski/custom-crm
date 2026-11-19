@@ -38,6 +38,7 @@ import { TrackingModule } from "./tracking/tracking.module";
 import { TrpcModule } from "./trpc/trpc.module";
 import { UsersModule } from "./users/users.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
+import { WorkspaceConfigModule } from "./workspace-config/workspace-config.module";
 
 @Module({
 	imports: [
@@ -74,6 +75,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 		SyncModule,
 		SettingsModule,
 		WorkspaceModule,
+		WorkspaceConfigModule,
 		SsoModule,
 		SlackModule,
 		BackfillModule,

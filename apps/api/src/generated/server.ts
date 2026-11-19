@@ -33,6 +33,7 @@ import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannel
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
 import { workspaceOutput, memberListInput, memberListOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, okOutput, inviteMemberInput, invitationOutput, invitationListOutput, invitationIdInput, workspaceListOutput, createWorkspaceInput, workspaceSummaryOutput, activateWorkspaceInput, myInvitationListOutput } from "../workspace/workspace.contracts";
+import { configStateOutput, proposeInput, configVersionOutput, editInput, applyInput, applyOutput } from "../workspace-config/workspace-config.contracts";
 import type { UsersRouter } from "../users/users.router";
 
 const appRouter = t.router({
@@ -838,6 +839,23 @@ const appRouter = t.router({
     acceptInvitation: publicProcedure
       .input(invitationIdInput)
       .output(workspaceSummaryOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
+  workspaceConfig: t.router({
+    state: publicProcedure
+      .output(configStateOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    propose: publicProcedure
+      .input(proposeInput)
+      .output(z.array(configVersionOutput))
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    edit: publicProcedure
+      .input(editInput)
+      .output(configVersionOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    apply: publicProcedure
+      .input(applyInput)
+      .output(applyOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     })
 });

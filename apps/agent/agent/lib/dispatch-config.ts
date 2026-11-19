@@ -1,6 +1,11 @@
 const MINUTE_MS = 60_000;
 
 export const DISPATCH = {
+	workspaceConfig: {
+		timeoutMs: 2 * MINUTE_MS,
+		maxOutputTokens: 16_000,
+	},
+
 	visible: {
 		batch: 60,
 		concurrency: 6,

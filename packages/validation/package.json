@@ -20,7 +20,8 @@
 		"./field-backfill": "./src/field-backfill.ts",
 		"./field-templates": "./src/field-templates.ts",
 		"./saved-view": "./src/saved-view.ts",
-		"./search-config": "./src/search-config.ts"
+		"./search-config": "./src/search-config.ts",
+		"./workspace-config": "./src/workspace-config.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

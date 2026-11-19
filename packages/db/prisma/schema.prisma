@@ -1845,6 +1845,7 @@ model Organization {
   appSetting                   AppSetting?
   profile                      WorkspaceProfile?
   exchangeRates                ExchangeRate[]
+  workspaceConfigVersions      WorkspaceConfigVersion[]
 
   @@unique([slug])
   @@map("organization")
@@ -1942,4 +1943,41 @@ model Apikey {
   @@index([configId])
   @@index([key])
   @@map("apikey")
+}
+
+enum WorkspaceConfigStatus {
+  GENERATING
+  PROPOSED
+  APPLIED
+  SUPERSEDED
+  FAILED
+}
+
+enum WorkspaceConfigSource {
+  TEMPLATE
+  AI
+}
+
+model WorkspaceConfigVersion {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id      String                @id @default(cuid())
+  version Int
+  status  WorkspaceConfigStatus
+  source  WorkspaceConfigSource
+
+  profile Json
+  config  Json?
+  error   String?
+
+  createdById String?
+  appliedById String?
+  appliedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([organizationId, version])
+  @@index([organizationId, status])
+  @@map("workspaceConfigVersion")
 }

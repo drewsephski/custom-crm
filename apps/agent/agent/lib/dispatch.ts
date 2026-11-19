@@ -1,5 +1,5 @@
 import { EnrichmentStatus } from "@crm/db";
-import { DIRECT_KINDS } from "@crm/db/agent-tasks";
+import { DIRECT_KINDS, WORKSPACE_CONFIG_TASK } from "@crm/db/agent-tasks";
 import { runInTenant } from "@crm/db/tenancy";
 import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { APP_AUTH, type AppAuth } from "./app-auth";
@@ -16,6 +16,7 @@ import { runSlackPeopleMatch } from "./slack-people";
 import { staleTaskSweep } from "./stale-tasks";
 import { claimDue, completeTask, type LeasedTask, noteSession } from "./tasks";
 import { ORGANIZATION_ATTRIBUTE } from "./tenant-scope";
+import { generateWorkspaceConfig } from "./workspace-config";
 
 export const VISIBLE_BATCH = DISPATCH.visible.batch;
 export const VISIBLE_CONCURRENCY = DISPATCH.visible.concurrency;
@@ -128,6 +129,11 @@ async function handleDirect(task: LeasedTask): Promise<void> {
 				? "Queued 1 matching agent run."
 				: `Queued ${queued} matching agent runs.`,
 		);
+		return;
+	}
+
+	if (task.kind === WORKSPACE_CONFIG_TASK) {
+		await completeTask(task.id, await generateWorkspaceConfig(task.payload));
 		return;
 	}
 
