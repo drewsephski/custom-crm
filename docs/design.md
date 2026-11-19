@@ -83,6 +83,16 @@ as a `title` attribute or an option label, joins with a comma.
 DataTable keeps its named scroll region in the tab order, including during loading.
 Its lint override permits this tab stop for keyboard scrolling.
 
+## Boards
+
+`Kanban` (`@crm/ui/components/kanban`) is the one drag-between-columns surface.
+A column is a `bg-muted` panel with `shadow-border`; a card is a `bg-card`
+surface with `shadow-border`, and `shadow-menu` while it is lifted.
+Every card has a move button for the keyboard and the call site gives it a menu
+that moves it without dragging. Drag is never the only way.
+Columns snap one at a time below `md` and scroll freely above it.
+The drop animation is off under reduced motion.
+
 ## Auth exception
 
 `AuthShell` (sign-in, grant access, onboarding) keeps the pre-Neo look exactly.

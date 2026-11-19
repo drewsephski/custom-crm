@@ -3,6 +3,7 @@ import { auth } from "@crm/auth/auth";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { db } from "@crm/db";
 import { runAsSystem, runInTenant, runUnscoped } from "@crm/db/tenancy";
+import { ensureTestPipeline, testStageIds } from "@crm/db/testing";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { createAuthMiddleware } from "better-auth/api";
@@ -161,6 +162,9 @@ async function seed(): Promise<Fixtures> {
 			});
 		}
 	});
+
+	await ensureTestPipeline(NORTHSTAR.id);
+	await ensureTestPipeline(HARBOR.id);
 
 	const northstar = await runInTenant(NORTHSTAR.id, async () => {
 		const company = await db.company.create({
@@ -685,5 +689,161 @@ describe("invitations", () => {
 			null,
 		);
 		expect(accepted.status).toBe(403);
+	});
+});
+
+describe("pipelines at the API boundary", () => {
+	const pipelineOutput = z.object({
+		stages: z.array(
+			z.object({ id: z.string(), key: z.string(), isDefault: z.boolean() }),
+		),
+	});
+	const dealOutput = z.object({ id: z.string() });
+	const stageOutput = z.object({
+		stage: z.object({ id: z.string(), key: z.string(), outcome: z.string() }),
+		changed: z.boolean(),
+	});
+	const boardOutput = z.object({
+		columns: z.array(
+			z.object({
+				stage: z.object({ id: z.string() }),
+				deals: z.array(z.object({ id: z.string() })),
+			}),
+		),
+	});
+	let northstarDeal = "";
+
+	it("answers each workspace with its own stages", async () => {
+		const [northstar, harbor] = await Promise.all([
+			query(USERS.shared, "pipeline.active", {}, NORTHSTAR.slug),
+			query(USERS.shared, "pipeline.active", {}, HARBOR.slug),
+		]);
+		const northstarIds = pipelineOutput
+			.parse(dataOf(northstar))
+			.stages.map((stage) => stage.id);
+		const harborIds = pipelineOutput
+			.parse(dataOf(harbor))
+			.stages.map((stage) => stage.id);
+
+		expect(northstarIds.length).toBeGreaterThan(2);
+		expect(northstarIds.some((id) => harborIds.includes(id))).toBe(false);
+	});
+
+	it("creates a deal in the workspace default stage and moves it", async () => {
+		const stages = await testStageIds(NORTHSTAR.id);
+		const created = await mutate(
+			USERS.northstarOwner,
+			"deals.create",
+			{
+				name: "Lakeside website",
+				companyId: fixtures.northstarCompany,
+				ownerId: USERS.northstarOwner,
+			},
+			NORTHSTAR.slug,
+		);
+		expect(created.status).toBe(200);
+		northstarDeal = dealOutput.parse(dataOf(created)).id;
+
+		const moved = await mutate(
+			USERS.northstarOwner,
+			"deals.setStage",
+			{ id: northstarDeal, stageId: stages.proposal_sent ?? "" },
+			NORTHSTAR.slug,
+		);
+		expect(moved.status).toBe(200);
+		expect(stageOutput.parse(dataOf(moved))).toMatchObject({
+			stage: { id: stages.proposal_sent, key: "proposal_sent" },
+			changed: true,
+		});
+
+		const stored = await runInTenant(NORTHSTAR.id, () =>
+			db.deal.findUniqueOrThrow({
+				where: { id: northstarDeal },
+				select: { stageId: true },
+			}),
+		);
+		expect(stored.stageId).toBe(stages.proposal_sent ?? "");
+	});
+
+	it("asks for a reason before a deal is lost, then closes it", async () => {
+		const stages = await testStageIds(NORTHSTAR.id);
+		const refused = await mutate(
+			USERS.northstarOwner,
+			"deals.setStage",
+			{ id: northstarDeal, stageId: stages.lost ?? "" },
+			NORTHSTAR.slug,
+		);
+		expect(refused.status).toBe(400);
+
+		const closed = await mutate(
+			USERS.northstarOwner,
+			"deals.setStage",
+			{
+				id: northstarDeal,
+				stageId: stages.lost ?? "",
+				closedReason: "Budget pulled",
+			},
+			NORTHSTAR.slug,
+		);
+		expect(closed.status).toBe(200);
+		expect(stageOutput.parse(dataOf(closed)).stage.outcome).toBe("LOST");
+
+		const stored = await runInTenant(NORTHSTAR.id, () =>
+			db.deal.findUniqueOrThrow({
+				where: { id: northstarDeal },
+				select: { closedAt: true, closedReason: true },
+			}),
+		);
+		expect(stored.closedAt).not.toBeNull();
+		expect(stored.closedReason).toBe("Budget pulled");
+	});
+
+	it("refuses another workspace's stage id", async () => {
+		const harborStages = await testStageIds(HARBOR.id);
+		const moved = await mutate(
+			USERS.northstarOwner,
+			"deals.setStage",
+			{ id: northstarDeal, stageId: harborStages.qualified ?? "" },
+			NORTHSTAR.slug,
+		);
+		expect(moved.status).toBe(400);
+
+		const created = await mutate(
+			USERS.northstarOwner,
+			"deals.create",
+			{
+				name: "Borrowed stage",
+				companyId: fixtures.northstarCompany,
+				ownerId: USERS.northstarOwner,
+				stageId: harborStages.qualified ?? "",
+			},
+			NORTHSTAR.slug,
+		);
+		expect(created.status).toBe(400);
+	});
+
+	it("keeps one workspace's deals off the other's board", async () => {
+		const [northstar, harbor] = await Promise.all([
+			query(USERS.shared, "deals.board", {}, NORTHSTAR.slug),
+			query(USERS.shared, "deals.board", {}, HARBOR.slug),
+		]);
+		const idsOn = (response: request.Response) =>
+			boardOutput
+				.parse(dataOf(response))
+				.columns.flatMap((column) => column.deals.map((deal) => deal.id));
+
+		expect(idsOn(northstar)).toContain(northstarDeal);
+		expect(idsOn(harbor)).not.toContain(northstarDeal);
+
+		const foreign = await mutate(
+			USERS.harborOwner,
+			"deals.setStage",
+			{
+				id: northstarDeal,
+				stageId: (await testStageIds(HARBOR.id)).qualified ?? "",
+			},
+			HARBOR.slug,
+		);
+		expect(foreign.status).toBe(404);
 	});
 });

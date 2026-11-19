@@ -65,12 +65,13 @@ a company in Harbor by id. `crm_assert_same_org()` is a `BEFORE INSERT OR UPDATE
 trigger on every table with a tenant-to-tenant reference; it raises `23503`
 (Prisma `P2003`) when the target is in another organization. It checks only changed
 columns on update, so a dangling id on an untouched column does not block an edit.
-`agentTask` has no trigger on purpose: it names records with no foreign key, and a
+A deal's `stageId` is checked the same way, so a deal cannot sit in another
+agency's stage (`docs/pipelines.md`). `agentTask` has no trigger on purpose: it names records with no foreign key, and a
 task may outlive the record it names (a "deleted" event).
 
 ### Uniqueness is per organization
 
-Contact email, company domain, field keys, saved-view names, mailbox syncs, email
+Contact email, company domain, field keys, pipeline stage keys, saved-view names, mailbox syncs, email
 message and thread ids, calendar events, suppressions, tracked domains, visitors,
 page rollups, form dedupe keys, exchange rates and Slack rows are unique per
 `organizationId`. Two agencies can both have `maya@lakeside.com`.

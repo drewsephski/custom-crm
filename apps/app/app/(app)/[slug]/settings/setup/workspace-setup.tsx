@@ -25,6 +25,7 @@ import { XIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
+import { PipelinePlanDialog } from "./pipeline-plan-dialog";
 
 const POLL_MS = 2_000;
 
@@ -61,14 +62,27 @@ export function WorkspaceSetup() {
 
 	if (!state.data) return null;
 
-	const { canConfigure, aiAvailable, applied, proposals } = state.data;
+	const { canConfigure, aiAvailable, applied, proposals, pipelineInSync } =
+		state.data;
 
 	return (
 		<div className="flex flex-col gap-6">
 			{applied ? (
 				<SettingsCard
 					title={`Version ${applied.version} is live`}
-					description={`Applied ${new Date(applied.appliedAt ?? applied.createdAt).toLocaleString()} from the ${applied.source === "AI" ? "AI proposal" : "agency template"}.`}
+					description={
+						pipelineInSync
+							? `Applied ${new Date(applied.appliedAt ?? applied.createdAt).toLocaleString()} from the ${applied.source === "AI" ? "AI proposal" : "agency template"}.`
+							: "The Deals page still uses the earlier stages. Review the stage changes to put this pipeline live."
+					}
+					status={
+						pipelineInSync ? null : <Badge variant="secondary">Not live</Badge>
+					}
+					action={
+						!pipelineInSync && canConfigure ? (
+							<ReviewStagesButton versionId={applied.id} />
+						) : null
+					}
 				>
 					<PipelinePreview config={applied.config} />
 				</SettingsCard>
@@ -109,6 +123,23 @@ export function WorkspaceSetup() {
 				) : null,
 			)}
 		</div>
+	);
+}
+
+function ReviewStagesButton({ versionId }: { versionId: string }) {
+	const [reviewing, setReviewing] = useState(false);
+
+	return (
+		<>
+			<Button size="sm" onClick={() => setReviewing(true)}>
+				Review stage changes
+			</Button>
+			<PipelinePlanDialog
+				versionId={versionId}
+				open={reviewing}
+				onOpenChange={setReviewing}
+			/>
+		</>
 	);
 }
 
@@ -295,22 +326,25 @@ function ProposalEditor({
 			queryKey: trpc.workspaceConfig.state.queryKey(),
 		});
 
-	const edit = useMutation(trpc.workspaceConfig.edit.mutationOptions());
-	const apply = useMutation(
-		trpc.workspaceConfig.apply.mutationOptions({
-			onSuccess: async (result) => {
-				await refresh();
-				toast.success(
-					result.alreadyApplied
-						? "That version was already live."
-						: `Applied: ${result.fieldsCreated} fields and ${result.viewsCreated} views added, ${result.fieldsKept} existing fields kept.`,
-				);
+	const [reviewing, setReviewing] = useState(false);
+	const edit = useMutation(
+		trpc.workspaceConfig.edit.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					refresh(),
+					queryClient.invalidateQueries({
+						queryKey: trpc.workspaceConfig.pipelinePlan.queryKey({
+							versionId: id,
+						}),
+					}),
+				]);
+				setReviewing(true);
 			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
 
-	const busy = edit.isPending || apply.isPending;
+	const busy = edit.isPending;
 
 	const setStage = (index: number, label: string) =>
 		setConfig((current) => ({
@@ -352,23 +386,21 @@ function ProposalEditor({
 			}
 			action={
 				canConfigure ? (
-					<Button
-						size="sm"
-						disabled={busy}
-						onClick={async () => {
-							try {
-								await edit.mutateAsync({ versionId: id, config });
-								apply.mutate({ versionId: id });
-							} catch (error) {
-								toast.error(
-									error instanceof Error ? error.message : "Could not save.",
-								);
-							}
-						}}
-					>
-						{busy ? <Spinner data-icon="inline-start" /> : null}
-						Apply this setup
-					</Button>
+					<>
+						<Button
+							size="sm"
+							disabled={busy}
+							onClick={() => edit.mutate({ versionId: id, config })}
+						>
+							{busy ? <Spinner data-icon="inline-start" /> : null}
+							Review and apply
+						</Button>
+						<PipelinePlanDialog
+							versionId={id}
+							open={reviewing}
+							onOpenChange={setReviewing}
+						/>
+					</>
 				) : null
 			}
 		>

@@ -210,7 +210,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 								{stageSlices.map((slice) => (
 									<li key={slice.key} className="border-t first:border-t-0">
 										<Link
-											href={`${workspaceUrl("/deals")}?stage=${slice.key}`}
+											href={`${workspaceUrl("/deals")}?view=table&stage=${slice.key}`}
 											className="flex items-center gap-2.5 py-2 text-xs hover:underline"
 										>
 											<ChartSwatch color={slice.color} size="sm" />
