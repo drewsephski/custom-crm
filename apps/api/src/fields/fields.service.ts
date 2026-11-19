@@ -18,6 +18,7 @@ import {
 	usesOptions,
 	writeValues,
 } from "@crm/db/fields";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	BadRequestException,
 	ConflictException,
@@ -65,7 +66,13 @@ export class FieldsService {
 
 	async byKey(entity: FieldEntity, key: string): Promise<SerializedField> {
 		const definition = await this.db.fieldDefinition.findUnique({
-			where: { entity_key: { entity, key } },
+			where: {
+				organizationId_entity_key: {
+					organizationId: requireOrganizationId(),
+					entity,
+					key,
+				},
+			},
 			include: WITH_OPTIONS,
 		});
 
@@ -82,7 +89,13 @@ export class FieldsService {
 		}
 
 		const taken = await this.db.fieldDefinition.findUnique({
-			where: { entity_key: { entity: input.entity, key } },
+			where: {
+				organizationId_entity_key: {
+					organizationId: requireOrganizationId(),
+					entity: input.entity,
+					key,
+				},
+			},
 			select: { id: true },
 		});
 

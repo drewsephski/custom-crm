@@ -8,9 +8,9 @@ import {
 	RecordSource,
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
-import { readAgentModel } from "@crm/db/settings";
+import { configuredAgentModel } from "@crm/db/settings";
+import { runAsSystem } from "@crm/db/tenancy";
 import { CONTACT_CAP_REASON } from "@crm/db/tracking";
-import { WORKSPACE_ID } from "@crm/db/workspace";
 import {
 	bucket,
 	claimRollup,
@@ -63,6 +63,12 @@ export class RollupService {
 	) {}
 
 	async run(force = false): Promise<RollupOutcome> {
+		return runAsSystem("count install-wide telemetry", () =>
+			this.rollUp(force),
+		);
+	}
+
+	private async rollUp(force: boolean): Promise<RollupOutcome> {
 		if (telemetryDisabled()) {
 			return { sent: false, reason: "telemetry is off", milestones: [] };
 		}
@@ -136,8 +142,8 @@ export class RollupService {
 	private async shape(): Promise<Properties> {
 		const [model, members, ssoProviders, postgres, contextKey] =
 			await Promise.all([
-				readAgentModel(this.db).catch(() => null),
-				this.db.member.count({ where: { organizationId: WORKSPACE_ID } }),
+				Promise.resolve(configuredAgentModel()),
+				this.db.member.count(),
 				this.db.ssoProvider.count(),
 				this.postgresMajor(),
 				this.db.appSetting.findFirst({ select: { contextDevApiKey: true } }),
@@ -155,7 +161,7 @@ export class RollupService {
 			cap_redis: isSet("REDIS_URL"),
 			cap_agent_bridge: isSet("AGENT_BRIDGE_SECRET"),
 			cap_cron_secret: isSet("CRON_SECRET"),
-			cap_ai_gateway: isSet("AI_GATEWAY_API_KEY"),
+			cap_ai_gateway: false,
 			cap_google_oauth:
 				isSet("GOOGLE_CLIENT_ID") && isSet("GOOGLE_CLIENT_SECRET"),
 			cap_sso_provider: ssoProviders > 0,

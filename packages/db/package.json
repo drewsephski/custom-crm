@@ -6,6 +6,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./agent-tasks": "./src/agent-tasks.ts",
+		"./ai-models": "./src/ai-models.ts",
 		"./attribution": "./src/attribution.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
@@ -22,9 +23,13 @@
 		"./json": "./src/json.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
+		"./settings-constants": "./src/settings-constants.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",
+		"./tenancy": "./src/tenancy.ts",
+		"./testing": "./src/testing.ts",
 		"./tracking": "./src/tracking.ts",
-		"./workspace": "./src/workspace.ts"
+		"./workspace": "./src/workspace.ts",
+		"./workspace-slug": "./src/workspace-slug.ts"
 	},
 	"scripts": {
 		"build": "prisma generate",
@@ -47,6 +52,7 @@
 		"@crm/env": "workspace:*",
 		"@prisma/adapter-pg": "^7.10.1",
 		"@prisma/client": "^7.10.1",
+		"@prisma/driver-adapter-utils": "7.10.1",
 		"@vercel/blob": "^2.6.1"
 	},
 	"devDependencies": {

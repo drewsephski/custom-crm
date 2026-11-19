@@ -1,5 +1,4 @@
-import { db } from "@crm/db";
-import { readAgentModel } from "@crm/db/settings";
+import { defaultModel } from "@crm/db/ai-models";
 import { agentError, modelError } from "@crm/telemetry";
 import { defineHook } from "eve/hooks";
 import { z } from "zod";
@@ -10,18 +9,8 @@ type SessionPrincipal = {
 
 const attributeText = z.string().trim().min(1).nullable().catch(null);
 
-let modelId: string | null = null;
-
-async function configuredModel(): Promise<string | null> {
-	if (modelId) return modelId;
-
-	try {
-		modelId = (await readAgentModel(db)).id;
-	} catch {
-		modelId = null;
-	}
-
-	return modelId;
+function configuredModel(): string {
+	return defaultModel().id;
 }
 
 const MODEL_CODES = [
@@ -78,7 +67,7 @@ export default defineHook({
 
 			modelError({
 				error: event.data.code,
-				modelId: await configuredModel(),
+				modelId: configuredModel(),
 			});
 		},
 	},

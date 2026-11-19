@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import {
+	db,
 	GoogleSyncStatus,
 	type MailboxSyncModel as MailboxSync,
 } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import type { GoogleConnectionService } from "../src/google/google-connection.service";
 import type { GoogleSyncService } from "../src/google/google-sync.service";
 import {
@@ -26,6 +28,7 @@ class FakeState {
 	add(id: string, source: string, overrides: Partial<MailboxSync> = {}): void {
 		this.rows.set(id, {
 			id,
+			organizationId: TEST_ORGANIZATION.id,
 			userId: `user-${id}`,
 			source,
 			status: GoogleSyncStatus.IDLE,
@@ -118,6 +121,7 @@ function build(
 	const provider = { runOne } as unknown as GoogleSyncService;
 
 	return new MailboxSyncService(
+		db,
 		state as unknown as SyncStateService,
 		provider,
 		provider as unknown as MicrosoftSyncService,

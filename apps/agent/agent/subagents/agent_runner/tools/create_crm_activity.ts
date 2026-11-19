@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { createRunActivity } from "../../../lib/run-runtime";
 import { requireTeamAgentAttribute } from "../../../lib/session-purpose";
+import { inSessionTenant } from "../../../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -15,10 +16,12 @@ export default defineTool({
 		dueAt: z.string().nullish(),
 	}),
 	async execute(input, ctx) {
-		return createRunActivity(
-			requireTeamAgentAttribute(ctx, "runId"),
-			ctx.callId,
-			input,
-		);
+		return inSessionTenant(ctx, async () => {
+			return createRunActivity(
+				requireTeamAgentAttribute(ctx, "runId"),
+				ctx.callId,
+				input,
+			);
+		});
 	},
 });

@@ -10,7 +10,13 @@ import {
 	FieldType,
 	RateSource,
 } from "../src/generated/prisma/enums";
-import { readReportingCurrency, SETTINGS_ID } from "../src/settings";
+import { readReportingCurrency, settingsKey } from "../src/settings";
+import {
+	requireOrganizationId,
+	runAsSystem,
+	runInTenant,
+} from "../src/tenancy";
+import { workspaceSlug } from "../src/workspace-slug";
 
 function makeRandom(seed: number): () => number {
 	let a = seed;
@@ -341,14 +347,20 @@ function slug(value: string): string {
 }
 
 async function seedOwners(): Promise<string[]> {
-	const existing = await db.user.findMany({ select: { id: true } });
+	const developerEmail = process.env.SEED_OWNER_EMAIL?.trim().toLowerCase();
+	const developer = developerEmail
+		? await db.user.findUnique({
+				where: { email: developerEmail },
+				select: { id: true },
+			})
+		: null;
 
-	if (existing.length > 0) {
-		console.log(`Using ${existing.length} existing user(s) as owners.`);
-		return existing.map((user) => user.id);
+	if (developerEmail && !developer) {
+		console.log(
+			`SEED_OWNER_EMAIL is ${developerEmail}, but no user has that address. Sign in once, then seed again.`,
+		);
 	}
 
-	console.log("No users yet — creating placeholder sales reps.");
 	const created = await Promise.all(
 		OWNERS.map((owner) =>
 			db.user.upsert({
@@ -366,7 +378,10 @@ async function seedOwners(): Promise<string[]> {
 		),
 	);
 
-	return created.map((user) => user.id);
+	return [
+		...(developer ? [developer.id] : []),
+		...created.map((user) => user.id),
+	];
 }
 
 async function seedCompanies(
@@ -375,22 +390,26 @@ async function seedCompanies(
 	const companies = [];
 
 	for (const company of COMPANIES) {
-		const row = await db.company.upsert({
-			where: { domain: company.domain },
-			create: {
-				name: company.name,
-				domain: company.domain,
-				website: `https://${company.domain}`,
-				industry: company.industry,
-				city: company.city,
-				country: company.country,
-				countryCode: company.countryCode,
-				ownerId: pick(ownerIds),
-				createdAt: daysFromNow(-integer(30, 400), 12),
-			},
-			update: {},
+		const existing = await db.company.findFirst({
+			where: { domain: company.domain, archivedAt: null },
 			select: { id: true, name: true, domain: true, iconUrl: true },
 		});
+		const row =
+			existing ??
+			(await db.company.create({
+				data: {
+					name: company.name,
+					domain: company.domain,
+					website: `https://${company.domain}`,
+					industry: company.industry,
+					city: company.city,
+					country: company.country,
+					countryCode: company.countryCode,
+					ownerId: pick(ownerIds),
+					createdAt: daysFromNow(-integer(30, 400), 12),
+				},
+				select: { id: true, name: true, domain: true, iconUrl: true },
+			}));
 		companies.push({ ...row, domain: row.domain ?? company.domain });
 	}
 
@@ -462,7 +481,13 @@ async function upsertField(
 ): Promise<SeededField> {
 	const key = fieldKeyFromLabel(label);
 	const definition = await db.fieldDefinition.upsert({
-		where: { entity_key: { entity, key } },
+		where: {
+			organizationId_entity_key: {
+				organizationId: DEMO_ORGANIZATION.id,
+				entity,
+				key,
+			},
+		},
 		create: {
 			entity,
 			key,
@@ -664,21 +689,25 @@ async function seedContacts(
 			if (used.has(email)) continue;
 			used.add(email);
 
-			const contact = await db.contact.upsert({
-				where: { email },
-				create: {
-					firstName,
-					lastName,
-					email,
-					title: pick(TITLES),
-					phone: chance(0.4) ? `+1 415 555 ${integer(1000, 9999)}` : null,
-					companyId: company.id,
-					ownerId: pick(ownerIds),
-					createdAt: daysFromNow(-integer(10, 300), 12),
-				},
-				update: {},
+			const found = await db.contact.findFirst({
+				where: { email, archivedAt: null },
 				select: { id: true },
 			});
+			const contact =
+				found ??
+				(await db.contact.create({
+					data: {
+						firstName,
+						lastName,
+						email,
+						title: pick(TITLES),
+						phone: chance(0.4) ? `+1 415 555 ${integer(1000, 9999)}` : null,
+						companyId: company.id,
+						ownerId: pick(ownerIds),
+						createdAt: daysFromNow(-integer(10, 300), 12),
+					},
+					select: { id: true },
+				}));
 
 			contacts.push({ id: contact.id, companyId: company.id });
 		}
@@ -721,13 +750,13 @@ async function seedRates(): Promise<number> {
 	const asOf = daysFromNow(-1);
 
 	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		create: {
-			id: SETTINGS_ID,
+			...settingsKey(),
 			reportingCurrency: DEFAULT_REPORTING_CURRENCY,
 		},
 		update: {},
-		select: { id: true },
+		select: { organizationId: true },
 	});
 
 	seedBase = await readReportingCurrency(db);
@@ -742,7 +771,8 @@ async function seedRates(): Promise<number> {
 	for (const [quoteCurrency, rate] of Object.entries(SEED_RATES)) {
 		await db.exchangeRate.upsert({
 			where: {
-				baseCurrency_quoteCurrency_source: {
+				organizationId_baseCurrency_quoteCurrency_source: {
+					organizationId: requireOrganizationId(),
 					baseCurrency: "USD",
 					quoteCurrency,
 					source: RateSource.FETCHED,
@@ -989,9 +1019,45 @@ async function seedActivities(
 	return rows.length;
 }
 
+const DEMO_ORGANIZATION = {
+	id: "demo-agency",
+	name: "Demo Agency",
+} as const;
+
+async function seedOrganization(ownerIds: string[]): Promise<void> {
+	await runAsSystem("seed the demo organization", async () => {
+		await db.organization.upsert({
+			where: { id: DEMO_ORGANIZATION.id },
+			create: {
+				id: DEMO_ORGANIZATION.id,
+				name: DEMO_ORGANIZATION.name,
+				slug: workspaceSlug(DEMO_ORGANIZATION.name),
+				createdAt: new Date(),
+			},
+			update: {},
+		});
+
+		await db.member.createMany({
+			data: ownerIds.map((userId, index) => ({
+				id: `seed-member-${userId}`,
+				organizationId: DEMO_ORGANIZATION.id,
+				userId,
+				role: index === 0 ? "owner" : "member",
+				createdAt: new Date(),
+			})),
+			skipDuplicates: true,
+		});
+	});
+}
+
 async function main() {
-	const rates = await seedRates();
 	const ownerIds = await seedOwners();
+	await seedOrganization(ownerIds);
+	await runInTenant(DEMO_ORGANIZATION.id, () => seedWorkspace(ownerIds));
+}
+
+async function seedWorkspace(ownerIds: string[]) {
+	const rates = await seedRates();
 	const companies = await seedCompanies(ownerIds);
 	const contacts = await seedContacts(companies, ownerIds);
 	const deals = await seedDeals(companies, contacts, ownerIds);

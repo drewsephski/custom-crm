@@ -1,5 +1,5 @@
 import { db } from "@crm/db";
-import { WORKSPACE_ID } from "@crm/db/workspace";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { parseAgentManifest } from "@crm/validation/agent-manifest";
 import { defineDynamic, defineTool } from "eve/tools";
 import { z } from "zod";
@@ -27,7 +27,7 @@ export default defineDynamic({
 			if (manifest.mcp.length === 0) return null;
 			const connections = await db.mcpConnection.findMany({
 				where: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug: {
 						in: manifest.mcp.map((grant) => grant.platformSlug),
 					},

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth/organization";
+import { DEFAULT_WORKSPACE_NAME } from "@crm/auth/organization";
 import { db, type Prisma } from "@crm/db";
-import { workspaceSlug } from "@crm/db/workspace";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
+import { workspaceSlug } from "@crm/db/workspace-slug";
 import { AgentAccessService } from "../src/agent/agent-access.service";
 import { AgentDefinitionsService } from "../src/agent/agent-definitions.service";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
@@ -22,10 +23,10 @@ const agents = new AgentDefinitionsService(
 
 beforeAll(async () => {
 	await db.organization.upsert({
-		where: { id: WORKSPACE_ID },
+		where: { id: TEST_ORGANIZATION.id },
 		update: {},
 		create: {
-			id: WORKSPACE_ID,
+			id: TEST_ORGANIZATION.id,
 			name: DEFAULT_WORKSPACE_NAME,
 			slug: workspaceSlug(DEFAULT_WORKSPACE_NAME),
 			createdAt: new Date(),
@@ -49,14 +50,14 @@ beforeAll(async () => {
 		data: [
 			{
 				id: memberId,
-				organizationId: WORKSPACE_ID,
+				organizationId: TEST_ORGANIZATION.id,
 				userId,
 				role: "member",
 				createdAt: new Date(),
 			},
 			{
 				id: teammateMemberId,
-				organizationId: WORKSPACE_ID,
+				organizationId: TEST_ORGANIZATION.id,
 				userId: teammateId,
 				role: "member",
 				createdAt: new Date(),

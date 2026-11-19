@@ -9,7 +9,7 @@ import { EnrichmentQueue } from "@/components/enrichment-queue";
 import { MobileNavProvider } from "@/components/mobile-nav";
 import { WorkspaceNav, WorkspaceNavFallback } from "@/components/workspace-nav";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { requireMailboxAccess } from "@/lib/session";
+import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 
@@ -70,7 +70,7 @@ async function WorkspaceAccount({
 }: Pick<LayoutProps<"/[slug]">, "params">) {
 	await connection();
 	const [{ user }, { slug }, workspace] = await Promise.all([
-		requireMailboxAccess(),
+		requireSession(),
 		params,
 		loadWorkspace(),
 	]);

@@ -65,6 +65,7 @@ export const env = {
 	cookieDomain: optional("AUTH_COOKIE_DOMAIN"),
 	trustedOrigins: [...new Set([...appUrls, apiUrl])],
 	isProduction: process.env.NODE_ENV === "production",
+	emailPassword: optional("AUTH_EMAIL_PASSWORD") === "true",
 } as const;
 
 export function isGoogleConfigured(): boolean {
@@ -73,6 +74,10 @@ export function isGoogleConfigured(): boolean {
 
 export function isMicrosoftConfigured(): boolean {
 	return env.microsoft !== undefined;
+}
+
+export function isEmailPasswordEnabled(): boolean {
+	return env.emailPassword;
 }
 
 export function isSlackConfigured(): boolean {

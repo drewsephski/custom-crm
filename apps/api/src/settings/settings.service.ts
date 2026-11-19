@@ -1,11 +1,10 @@
 import type { Db } from "@crm/db";
+import { AI_MODEL_DEFAULTS, isAnthropicConfigured } from "@crm/db/ai-models";
 import {
-	DEFAULT_AGENT_MODEL,
+	configuredAgentModel,
 	maskKey,
-	readAgentModel,
 	readArchiveRetentionDays,
 	readContextDevKey,
-	writeAgentModel,
 	writeArchiveRetentionDays,
 	writeContextDevKey,
 } from "@crm/db/settings";
@@ -33,56 +32,26 @@ export class SettingsService {
 	) {}
 
 	async agentModel(): Promise<AgentModelSettings> {
-		const [model, row] = await Promise.all([
-			readAgentModel(this.db),
-			this.db.appSetting.findFirst({ select: { updatedAt: true } }),
-		]);
+		const model = configuredAgentModel();
 
 		return {
 			selectedId: model.isDefault ? null : model.id,
 			effectiveId: model.id,
-			defaultId: DEFAULT_AGENT_MODEL.id,
+			defaultId: AI_MODEL_DEFAULTS.default,
 			effective: await this.catalog.find(model.id),
-			updatedAt: row?.updatedAt.toISOString() ?? null,
+			updatedAt: null,
 		};
 	}
 
-	async setAgentModel(modelId: string | null): Promise<AgentModelSettings> {
-		if (modelId === null) {
-			await writeAgentModel(this.db, null);
-			this.logger.log({ message: "Agent model reset to the default" });
-			return this.agentModel();
-		}
-
-		const models = await this.catalog.models();
-
-		if (!models) {
-			throw new BadRequestException(
-				"Could not reach the AI Gateway to check that model. Try again in a moment.",
-			);
-		}
-
-		const chosen = models.find((model) => model.id === modelId);
-
-		if (!chosen) {
-			throw new BadRequestException(
-				`The AI Gateway does not serve a tool-using model called "${modelId}".`,
-			);
-		}
-
-		await writeAgentModel(this.db, {
-			id: chosen.id,
-			contextWindowTokens: chosen.contextWindowTokens,
-		});
-
-		this.logger.log({ message: "Agent model changed", modelId: chosen.id });
-
-		return this.agentModel();
+	async setAgentModel(_modelId: string | null): Promise<AgentModelSettings> {
+		throw new BadRequestException(
+			"The model is set on the server with ANTHROPIC_MODEL and ANTHROPIC_COMPLEX_MODEL, so it is the same for every workspace.",
+		);
 	}
 
 	async modelCatalog(): Promise<ModelCatalogResult> {
 		const models = await this.catalog.models();
-		return { models: models ?? [], available: models !== null };
+		return { models, available: isAnthropicConfigured() };
 	}
 
 	async researchKey(): Promise<ResearchKeySettings> {

@@ -7,6 +7,7 @@ import {
 	it,
 } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import { EVENTS_PER_MINUTE, type TrackingConfig } from "@crm/db/tracking";
 import type { TrackingConfigService } from "../src/tracking/tracking-config.service";
 import { TrackingCounterService } from "../src/tracking/tracking-counter.service";
@@ -122,7 +123,7 @@ describe("counting page views against a domain", () => {
 	it("credits a subdomain's views to the parent that covers it", async () => {
 		await accept([view(child), view(child), view(parent)]);
 
-		const row = await db.trackedDomain.findUnique({
+		const row = await db.trackedDomain.findFirst({
 			where: { host: parent },
 			select: { pageViews: true },
 		});
@@ -149,7 +150,7 @@ describe("counting page views against a domain", () => {
 			{ type: "click", host: parent, path: "/pricing", at: Date.now() },
 		]);
 
-		const row = await db.trackedDomain.findUnique({
+		const row = await db.trackedDomain.findFirst({
 			where: { host: parent },
 			select: { pageViews: true },
 		});
@@ -334,5 +335,8 @@ describe("a batch that looks scripted", () => {
 function spendableWindows(): string[] {
 	const bucket = Math.floor(Date.now() / 60_000);
 
-	return [`rate:${bucket}`, `rate:${bucket + 1}`];
+	return [
+		`rate:${bucket}:${TEST_ORGANIZATION.id}`,
+		`rate:${bucket + 1}:${TEST_ORGANIZATION.id}`,
+	];
 }

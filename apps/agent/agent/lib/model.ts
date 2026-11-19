@@ -1,28 +1,10 @@
-import { db } from "@crm/db";
-import { DEFAULT_AGENT_MODEL, readAgentModel } from "@crm/db/settings";
+import { complexModel, defaultModel } from "@crm/db/ai-models";
+import { anthropic } from "eve/models/anthropic";
 
-export interface ModelSelection {
-	model: string;
-	modelContextWindowTokens: number;
+export function defaultAgentModel() {
+	return anthropic(defaultModel().id);
 }
 
-export async function selectedModel(): Promise<ModelSelection> {
-	try {
-		const setting = await readAgentModel(db);
-
-		return {
-			model: setting.id,
-			modelContextWindowTokens: setting.contextWindowTokens,
-		};
-	} catch (error) {
-		console.error(
-			`[agent] could not read the configured model, falling back: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-		return {
-			model: DEFAULT_AGENT_MODEL.id,
-			modelContextWindowTokens: DEFAULT_AGENT_MODEL.contextWindowTokens,
-		};
-	}
+export function complexAgentModel() {
+	return anthropic(complexModel().id);
 }

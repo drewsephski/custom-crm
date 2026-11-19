@@ -1,25 +1,35 @@
 import {
 	canChangeRole,
+	canChangeRoleOf,
+	canGrantRole,
+	canInviteMembers,
+	canRemoveMember,
 	canRenameWorkspace,
-	ensureWorkspaceMembership,
 	isWorkspaceRole,
-	WORKSPACE_ID,
+	membershipOf,
+	toWorkspaceRole,
 	type WorkspaceRole,
-	workspaceRoleOf,
 } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
-import { isOnboarded, markOnboarded, workspaceSlug } from "@crm/db/workspace";
+import {
+	requireOrganizationId,
+	runAsSystem,
+	runInTenant,
+} from "@crm/db/tenancy";
+import { isOnboarded, markOnboarded } from "@crm/db/workspace";
+import { RESERVED_SLUGS, workspaceSlug } from "@crm/db/workspace-slug";
 import {
 	BadRequestException,
+	ConflictException,
 	ForbiddenException,
 	Injectable,
 	Logger,
 	NotFoundException,
-	ServiceUnavailableException,
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { normalizeDomain } from "../companies/domain";
 import { InjectDatabase } from "../database/database.constants";
+import { listMemberships } from "../tenancy/workspace-resolver";
 import {
 	countsByKey,
 	type ListResult,
@@ -28,12 +38,19 @@ import {
 	resolveOrderBy,
 } from "../trpc/list-input";
 import type {
+	CreateWorkspaceInput,
+	InvitationView,
+	InviteMemberInput,
 	MemberListInput,
+	MyInvitation,
+	RemoveMemberInput,
 	SetMemberRoleInput,
 	UpdateWorkspaceInput,
 	Workspace,
 	WorkspaceMember,
+	WorkspaceSummary,
 } from "./workspace.contracts";
+import { WORKSPACE } from "./workspace-config";
 
 const MEMBER_SELECT = {
 	id: true,
@@ -45,6 +62,19 @@ const MEMBER_SELECT = {
 
 type MemberRow = Prisma.MemberGetPayload<{ select: typeof MEMBER_SELECT }>;
 
+const INVITATION_SELECT = {
+	id: true,
+	email: true,
+	role: true,
+	status: true,
+	expiresAt: true,
+	user: { select: { name: true, email: true } },
+} as const;
+
+type InvitationRow = Prisma.InvitationGetPayload<{
+	select: typeof INVITATION_SELECT;
+}>;
+
 const SORTABLE: OrderByColumns<Prisma.MemberOrderByWithRelationInput> = {
 	name: (dir) => ({ user: { name: dir } }),
 	email: (dir) => ({ user: { email: dir } }),
@@ -52,8 +82,29 @@ const SORTABLE: OrderByColumns<Prisma.MemberOrderByWithRelationInput> = {
 	joinedAt: (dir) => ({ createdAt: dir }),
 };
 
-function toRole(value: string): WorkspaceRole {
-	return isWorkspaceRole(value) ? value : "member";
+const INVITATION_STATUSES = [
+	"pending",
+	"accepted",
+	"canceled",
+	"expired",
+] as const;
+
+type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+function invitationStatus(row: {
+	status: string;
+	expiresAt: Date;
+}): InvitationStatus {
+	if (row.status === "pending" && row.expiresAt.getTime() <= Date.now()) {
+		return "expired";
+	}
+	return (INVITATION_STATUSES as readonly string[]).includes(row.status)
+		? (row.status as InvitationStatus)
+		: "canceled";
+}
+
+function newId(): string {
+	return crypto.randomUUID();
 }
 
 @Injectable()
@@ -66,20 +117,26 @@ export class WorkspaceService {
 	) {}
 
 	async get(userId: string): Promise<Workspace> {
-		let row = await this.readWorkspace();
+		const organizationId = requireOrganizationId();
+		const [row, role] = await runAsSystem("read the active workspace", () =>
+			Promise.all([
+				this.db.organization.findUnique({
+					where: { id: organizationId },
+					select: {
+						id: true,
+						slug: true,
+						name: true,
+						website: true,
+						metadata: true,
+					},
+				}),
+				membershipOf(userId, organizationId, this.db),
+			]),
+		);
 
-		if (!row) {
-			await ensureWorkspaceMembership(userId);
-			row = await this.readWorkspace();
+		if (!row || !role) {
+			throw new NotFoundException("That workspace does not exist.");
 		}
-
-		if (!row) {
-			throw new ServiceUnavailableException(
-				"The workspace could not be read. Sign in again in a moment.",
-			);
-		}
-
-		const role = await workspaceRoleOf(userId);
 
 		return {
 			id: row.id,
@@ -87,9 +144,135 @@ export class WorkspaceService {
 			name: row.name,
 			website: row.website,
 			onboarded: isOnboarded(row.metadata),
-			viewerRole: role,
-			canRename: canRenameWorkspace(role),
-			canChangeRoles: canChangeRole(role),
+			viewerRole: role.role,
+			canRename: canRenameWorkspace(role.role),
+			canChangeRoles: canChangeRole(role.role),
+			canInvite: canInviteMembers(role.role),
+		};
+	}
+
+	async list(
+		userId: string,
+		activeOrganizationId: string | null,
+	): Promise<{ workspaces: WorkspaceSummary[]; activeSlug: string | null }> {
+		const memberships = await listMemberships(this.db, userId);
+		const active =
+			memberships.find((m) => m.organizationId === activeOrganizationId) ??
+			memberships[0];
+
+		return {
+			workspaces: memberships.map((m) => ({
+				id: m.organizationId,
+				slug: m.slug,
+				name: m.name,
+				role: m.role,
+			})),
+			activeSlug: active?.slug ?? null,
+		};
+	}
+
+	async create(
+		userId: string,
+		sessionId: string | null,
+		input: CreateWorkspaceInput,
+	): Promise<WorkspaceSummary> {
+		const website = input.website ? normalizeDomain(input.website) : null;
+		if (input.website && !website) {
+			throw new BadRequestException(
+				"That is not a website. Enter the domain, like acme.com.",
+			);
+		}
+
+		const organizationId = newId();
+
+		const created = await runAsSystem("create a workspace", () =>
+			this.db.$transaction(async (tx) => {
+				const slug = await this.uniqueSlug(tx, input.name);
+
+				const organization = await tx.organization.create({
+					data: {
+						id: organizationId,
+						name: input.name,
+						slug,
+						website,
+						metadata: markOnboarded(null, new Date()),
+						createdAt: new Date(),
+					},
+					select: { id: true, slug: true, name: true },
+				});
+
+				await tx.member.create({
+					data: {
+						id: newId(),
+						organizationId,
+						userId,
+						role: "owner",
+						createdAt: new Date(),
+					},
+				});
+
+				await tx.appSetting.create({ data: { organizationId } });
+
+				if (sessionId) {
+					await tx.session.updateMany({
+						where: { id: sessionId, userId },
+						data: { activeOrganizationId: organizationId },
+					});
+				}
+
+				return organization;
+			}),
+		);
+
+		this.logger.log({
+			message: "Workspace created",
+			userId,
+			organizationId,
+		});
+
+		if (website) {
+			await runInTenant(organizationId, () =>
+				this.agent.workspaceChanged(
+					website,
+					"The agency using this CRM said what its website is",
+				),
+			);
+		}
+
+		return {
+			id: created.id,
+			slug: created.slug,
+			name: created.name,
+			role: "owner",
+		};
+	}
+
+	async activate(
+		userId: string,
+		sessionId: string | null,
+		slug: string,
+	): Promise<WorkspaceSummary> {
+		const memberships = await listMemberships(this.db, userId);
+		const target = memberships.find((m) => m.slug === slug);
+
+		if (!target) {
+			throw new ForbiddenException("You are not a member of that workspace.");
+		}
+
+		if (sessionId) {
+			await runAsSystem("remember the active workspace", () =>
+				this.db.session.updateMany({
+					where: { id: sessionId, userId },
+					data: { activeOrganizationId: target.organizationId },
+				}),
+			);
+		}
+
+		return {
+			id: target.organizationId,
+			slug: target.slug,
+			name: target.name,
+			role: target.role,
 		};
 	}
 
@@ -97,18 +280,14 @@ export class WorkspaceService {
 		userId: string,
 		input: UpdateWorkspaceInput,
 	): Promise<Workspace> {
-		const role = await workspaceRoleOf(userId);
+		const organizationId = requireOrganizationId();
+		const role = await this.roleOf(userId);
 
 		if (!canRenameWorkspace(role)) {
 			throw new ForbiddenException(
 				"Only an owner or an admin can change the workspace.",
 			);
 		}
-
-		const before = await this.db.organization.findUnique({
-			where: { id: WORKSPACE_ID },
-			select: { website: true, metadata: true },
-		});
 
 		const website = normalizeDomain(input.website);
 
@@ -118,22 +297,43 @@ export class WorkspaceService {
 			);
 		}
 
-		await this.db.organization.update({
-			where: { id: WORKSPACE_ID },
-			data: {
-				name: input.name,
-				slug: workspaceSlug(input.slug ?? input.name),
-				website,
-				metadata: markOnboarded(before?.metadata ?? null, new Date()),
-			},
-		});
+		const before = await runAsSystem("rename the workspace", () =>
+			this.db.$transaction(async (tx) => {
+				const current = await tx.organization.findUnique({
+					where: { id: organizationId },
+					select: { website: true, metadata: true, slug: true },
+				});
+
+				if (!current) {
+					throw new NotFoundException("That workspace does not exist.");
+				}
+
+				const requested = workspaceSlug(input.slug ?? input.name);
+				const slug =
+					requested === current.slug
+						? requested
+						: await this.uniqueSlug(tx, requested, organizationId);
+
+				await tx.organization.update({
+					where: { id: organizationId },
+					data: {
+						name: input.name,
+						slug,
+						website,
+						metadata: markOnboarded(current.metadata, new Date()),
+					},
+				});
+
+				return current;
+			}),
+		);
 
 		this.logger.log({ message: "Workspace updated", userId });
 
-		if (website !== before?.website) {
+		if (website !== before.website) {
 			await this.agent.workspaceChanged(
 				website,
-				before?.website
+				before.website
 					? "The company using this CRM changed its website"
 					: "The company using this CRM said what its website is",
 			);
@@ -147,23 +347,28 @@ export class WorkspaceService {
 		input: MemberListInput,
 	): Promise<ListResult<WorkspaceMember>> {
 		const where = this.buildWhere(input);
+		const facetWhere = this.searchWhere(input.q);
 		const { skip, take } = paginate(input);
 
-		const [rows, total, roles] = await Promise.all([
-			this.db.member.findMany({
-				where,
-				skip,
-				take,
-				select: MEMBER_SELECT,
-				orderBy: resolveOrderBy(input, SORTABLE, { createdAt: "asc" }),
-			}),
-			this.db.member.count({ where }),
-			this.db.member.groupBy({
-				by: ["role"],
-				where: this.searchWhere(input.q),
-				_count: { _all: true },
-			}),
-		]);
+		const [rows, total, roles] = await runAsSystem(
+			"list workspace members",
+			() =>
+				Promise.all([
+					this.db.member.findMany({
+						where,
+						skip,
+						take,
+						select: MEMBER_SELECT,
+						orderBy: resolveOrderBy(input, SORTABLE, { createdAt: "asc" }),
+					}),
+					this.db.member.count({ where }),
+					this.db.member.groupBy({
+						by: ["role"],
+						where: facetWhere,
+						_count: { _all: true },
+					}),
+				]),
+		);
 
 		return {
 			rows: rows.map((row) => this.toMember(row, userId)),
@@ -176,44 +381,44 @@ export class WorkspaceService {
 		userId: string,
 		input: SetMemberRoleInput,
 	): Promise<WorkspaceMember> {
-		const role = await workspaceRoleOf(userId);
+		const organizationId = requireOrganizationId();
+		const actor = await this.roleOf(userId);
 
-		if (!canChangeRole(role)) {
+		if (!canChangeRole(actor)) {
 			throw new ForbiddenException(
 				"Only an owner or an admin can change a member's role.",
 			);
 		}
 
-		const updated = await this.db.$transaction(async (tx) => {
-			const target = await tx.member.findFirst({
-				where: { id: input.memberId, organizationId: WORKSPACE_ID },
-				select: { id: true, role: true },
-			});
+		const updated = await runAsSystem("change a member's role", () =>
+			this.db.$transaction(async (tx) => {
+				const target = await tx.member.findFirst({
+					where: { id: input.memberId, organizationId },
+					select: { id: true, role: true },
+				});
 
-			if (!target) {
-				throw new NotFoundException("That person is not in this workspace.");
-			}
+				if (!target) {
+					throw new NotFoundException("That person is not in this workspace.");
+				}
 
-			if (target.role === "owner" && input.role !== "owner") {
-				const owners = await tx.$queryRaw<{ id: string }[]>`
-					SELECT id FROM "member"
-					WHERE "organizationId" = ${WORKSPACE_ID} AND role = 'owner'
-					FOR UPDATE
-				`;
-
-				if (owners.length <= 1) {
+				const current = toWorkspaceRole(target.role);
+				if (!canChangeRoleOf(actor, current, input.role)) {
 					throw new ForbiddenException(
-						"The workspace needs an owner. Make someone else an owner first.",
+						"Only an owner can make someone an owner or change an owner's role.",
 					);
 				}
-			}
 
-			return tx.member.update({
-				where: { id: target.id },
-				data: { role: input.role },
-				select: MEMBER_SELECT,
-			});
-		});
+				if (current === "owner" && input.role !== "owner") {
+					await this.assertAnotherOwner(tx, organizationId);
+				}
+
+				return tx.member.update({
+					where: { id: target.id },
+					data: { role: input.role },
+					select: MEMBER_SELECT,
+				});
+			}),
+		);
 
 		this.logger.log({
 			message: "Workspace role changed",
@@ -225,6 +430,378 @@ export class WorkspaceService {
 		return this.toMember(updated, userId);
 	}
 
+	async removeMember(
+		userId: string,
+		input: RemoveMemberInput,
+	): Promise<{ ok: true }> {
+		const organizationId = requireOrganizationId();
+		const actor = await this.roleOf(userId);
+
+		await runAsSystem("remove a workspace member", () =>
+			this.db.$transaction(async (tx) => {
+				const target = await tx.member.findFirst({
+					where: { id: input.memberId, organizationId },
+					select: { id: true, role: true, userId: true },
+				});
+
+				if (!target) {
+					throw new NotFoundException("That person is not in this workspace.");
+				}
+
+				const leaving = target.userId === userId;
+				const role = toWorkspaceRole(target.role);
+
+				if (!leaving && !canRemoveMember(actor, role)) {
+					throw new ForbiddenException(
+						"Only an owner can remove an owner, and only an owner or an admin can remove anyone.",
+					);
+				}
+
+				if (role === "owner") {
+					await this.assertAnotherOwner(tx, organizationId);
+				}
+
+				await tx.member.delete({ where: { id: target.id } });
+				await tx.session.updateMany({
+					where: {
+						userId: target.userId,
+						activeOrganizationId: organizationId,
+					},
+					data: { activeOrganizationId: null },
+				});
+			}),
+		);
+
+		this.logger.log({
+			message: "Workspace member removed",
+			userId,
+			memberId: input.memberId,
+		});
+
+		return { ok: true };
+	}
+
+	async invite(
+		userId: string,
+		input: InviteMemberInput,
+	): Promise<InvitationView> {
+		const organizationId = requireOrganizationId();
+		const actor = await this.roleOf(userId);
+
+		if (!canInviteMembers(actor)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can invite people.",
+			);
+		}
+
+		if (!canGrantRole(actor, input.role)) {
+			throw new ForbiddenException(
+				"You can only invite people with a role no higher than your own.",
+			);
+		}
+
+		const row = await runAsSystem("invite a workspace member", () =>
+			this.db.$transaction(async (tx) => {
+				const existing = await tx.member.findFirst({
+					where: {
+						organizationId,
+						user: { email: { equals: input.email, mode: "insensitive" } },
+					},
+					select: { id: true },
+				});
+
+				if (existing) {
+					throw new ConflictException("That person is already a member.");
+				}
+
+				await tx.invitation.updateMany({
+					where: {
+						organizationId,
+						email: { equals: input.email, mode: "insensitive" },
+						status: "pending",
+					},
+					data: { status: "canceled" },
+				});
+
+				return tx.invitation.create({
+					data: {
+						id: newId(),
+						organizationId,
+						email: input.email,
+						role: input.role,
+						status: "pending",
+						inviterId: userId,
+						expiresAt: new Date(Date.now() + WORKSPACE.invitation.ttlMs),
+					},
+					select: INVITATION_SELECT,
+				});
+			}),
+		);
+
+		this.logger.log({
+			message: "Workspace invitation created",
+			userId,
+			invitationId: row.id,
+			role: input.role,
+		});
+
+		return this.toInvitation(row);
+	}
+
+	async invitations(userId: string): Promise<InvitationView[]> {
+		const organizationId = requireOrganizationId();
+		const actor = await this.roleOf(userId);
+
+		if (!canInviteMembers(actor)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can see invitations.",
+			);
+		}
+
+		const rows = await runAsSystem("list workspace invitations", () =>
+			this.db.invitation.findMany({
+				where: { organizationId, status: "pending" },
+				orderBy: { createdAt: "desc" },
+				select: INVITATION_SELECT,
+			}),
+		);
+
+		return rows.map((row) => this.toInvitation(row));
+	}
+
+	async revokeInvitation(
+		userId: string,
+		invitationId: string,
+	): Promise<{ ok: true }> {
+		const organizationId = requireOrganizationId();
+		const actor = await this.roleOf(userId);
+
+		if (!canInviteMembers(actor)) {
+			throw new ForbiddenException(
+				"Only an owner or an admin can cancel an invitation.",
+			);
+		}
+
+		const { count } = await runAsSystem("cancel a workspace invitation", () =>
+			this.db.invitation.updateMany({
+				where: { id: invitationId, organizationId, status: "pending" },
+				data: { status: "canceled" },
+			}),
+		);
+
+		if (count === 0) {
+			throw new NotFoundException("That invitation is not pending.");
+		}
+
+		return { ok: true };
+	}
+
+	async myInvitations(userId: string): Promise<MyInvitation[]> {
+		const user = await this.verifiedUser(userId);
+		if (!user) return [];
+
+		const rows = await runAsSystem("list the caller's invitations", () =>
+			this.db.invitation.findMany({
+				where: {
+					email: { equals: user.email, mode: "insensitive" },
+					status: "pending",
+					expiresAt: { gt: new Date() },
+				},
+				orderBy: { createdAt: "desc" },
+				select: {
+					id: true,
+					role: true,
+					expiresAt: true,
+					organization: { select: { name: true } },
+					user: { select: { name: true, email: true } },
+				},
+			}),
+		);
+
+		return rows.map((row) => ({
+			id: row.id,
+			workspaceName: row.organization.name,
+			role: toWorkspaceRole(row.role ?? "member"),
+			invitedBy: row.user.name || row.user.email,
+			expiresAt: row.expiresAt.toISOString(),
+		}));
+	}
+
+	async acceptInvitation(
+		userId: string,
+		sessionId: string | null,
+		invitationId: string,
+	): Promise<WorkspaceSummary> {
+		const user = await this.verifiedUser(userId);
+
+		if (!user) {
+			throw new ForbiddenException(
+				"Verify your email address before you accept an invitation.",
+			);
+		}
+
+		const joined = await runAsSystem("accept a workspace invitation", () =>
+			this.db.$transaction(async (tx) => {
+				const invitation = await tx.invitation.findUnique({
+					where: { id: invitationId },
+					select: {
+						id: true,
+						organizationId: true,
+						email: true,
+						role: true,
+						status: true,
+						expiresAt: true,
+						inviterId: true,
+						organization: { select: { slug: true, name: true } },
+					},
+				});
+
+				if (
+					!invitation ||
+					invitation.email.toLowerCase() !== user.email.toLowerCase()
+				) {
+					throw new NotFoundException("That invitation is not for you.");
+				}
+
+				if (invitationStatus(invitation) !== "pending") {
+					throw new BadRequestException(
+						"That invitation is no longer valid. Ask for a new one.",
+					);
+				}
+
+				const requested = isWorkspaceRole(invitation.role ?? "")
+					? toWorkspaceRole(invitation.role ?? "member")
+					: "member";
+				const inviter = await membershipOf(
+					invitation.inviterId,
+					invitation.organizationId,
+					tx,
+				);
+				if (!canGrantRole(inviter?.role ?? null, requested)) {
+					throw new ForbiddenException(
+						"The person who invited you can no longer grant that role. Ask an owner for a new invitation.",
+					);
+				}
+
+				const existing = await membershipOf(
+					userId,
+					invitation.organizationId,
+					tx,
+				);
+
+				if (!existing) {
+					await tx.member.create({
+						data: {
+							id: newId(),
+							organizationId: invitation.organizationId,
+							userId,
+							role: requested,
+							createdAt: new Date(),
+						},
+					});
+				}
+
+				await tx.invitation.update({
+					where: { id: invitation.id },
+					data: { status: "accepted" },
+				});
+
+				if (sessionId) {
+					await tx.session.updateMany({
+						where: { id: sessionId, userId },
+						data: { activeOrganizationId: invitation.organizationId },
+					});
+				}
+
+				return {
+					id: invitation.organizationId,
+					slug: invitation.organization.slug,
+					name: invitation.organization.name,
+					role: existing?.role ?? requested,
+				};
+			}),
+		);
+
+		this.logger.log({
+			message: "Workspace invitation accepted",
+			userId,
+			organizationId: joined.id,
+		});
+
+		return joined;
+	}
+
+	private async roleOf(userId: string): Promise<WorkspaceRole | null> {
+		const organizationId = requireOrganizationId();
+		const membership = await runAsSystem("read the caller's role", () =>
+			membershipOf(userId, organizationId, this.db),
+		);
+		return membership?.role ?? null;
+	}
+
+	private async verifiedUser(
+		userId: string,
+	): Promise<{ email: string } | null> {
+		const user = await runAsSystem("read the caller's address", () =>
+			this.db.user.findUnique({
+				where: { id: userId },
+				select: { email: true, emailVerified: true },
+			}),
+		);
+		return user?.emailVerified ? { email: user.email } : null;
+	}
+
+	private async assertAnotherOwner(
+		tx: Prisma.TransactionClient,
+		organizationId: string,
+	): Promise<void> {
+		const owners = await tx.$queryRaw<{ id: string }[]>`
+			SELECT id FROM "member"
+			WHERE "organizationId" = ${organizationId} AND role = 'owner'
+			FOR UPDATE
+		`;
+
+		if (owners.length <= 1) {
+			throw new ForbiddenException(
+				"The workspace needs an owner. Make someone else an owner first.",
+			);
+		}
+	}
+
+	private async uniqueSlug(
+		tx: Prisma.TransactionClient,
+		name: string,
+		organizationId?: string,
+	): Promise<string> {
+		const base = workspaceSlug(name);
+
+		for (let attempt = 0; attempt < WORKSPACE.slug.maxAttempts; attempt++) {
+			const candidate =
+				attempt === 0
+					? base
+					: `${base}-${crypto
+							.randomUUID()
+							.replace(/-/g, "")
+							.slice(0, WORKSPACE.slug.suffixLength)}`;
+
+			if (RESERVED_SLUGS.includes(candidate)) continue;
+
+			const taken = await tx.organization.findFirst({
+				where: {
+					slug: candidate,
+					...(organizationId && { id: { not: organizationId } }),
+				},
+				select: { id: true },
+			});
+
+			if (!taken) return candidate;
+		}
+
+		throw new ConflictException(
+			"Could not find a free address for that workspace. Try another name.",
+		);
+	}
+
 	private toMember(row: MemberRow, userId: string): WorkspaceMember {
 		return {
 			id: row.id,
@@ -232,15 +809,28 @@ export class WorkspaceService {
 			name: row.user.name,
 			email: row.user.email,
 			image: row.user.image,
-			role: toRole(row.role),
+			role: toWorkspaceRole(row.role),
 			joinedAt: row.createdAt.toISOString(),
 			isViewer: row.userId === userId,
 		};
 	}
 
+	private toInvitation(row: InvitationRow): InvitationView {
+		return {
+			id: row.id,
+			email: row.email,
+			role: toWorkspaceRole(row.role ?? "member"),
+			status: invitationStatus(row),
+			expiresAt: row.expiresAt.toISOString(),
+			invitedBy: row.user.name || row.user.email,
+		};
+	}
+
 	private searchWhere(q: string): Prisma.MemberWhereInput {
 		const term = q.trim();
-		const where: Prisma.MemberWhereInput = { organizationId: WORKSPACE_ID };
+		const where: Prisma.MemberWhereInput = {
+			organizationId: requireOrganizationId(),
+		};
 
 		if (term) {
 			where.user = {
@@ -262,18 +852,5 @@ export class WorkspaceService {
 		}
 
 		return where;
-	}
-
-	private async readWorkspace() {
-		return this.db.organization.findUnique({
-			where: { id: WORKSPACE_ID },
-			select: {
-				id: true,
-				slug: true,
-				name: true,
-				website: true,
-				metadata: true,
-			},
-		});
 	}
 }

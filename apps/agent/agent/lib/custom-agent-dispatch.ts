@@ -1,11 +1,13 @@
 import { db, type Prisma } from "@crm/db";
 import { CRM_EVENT_CATALOG } from "@crm/db/crm-events";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { crmEventTask } from "@crm/validation/agent-events";
 import { readAgentTriggerConfig } from "@crm/validation/agent-manifest";
 import type { ChannelSendOptions, ChannelSource, Session } from "eve/channels";
 import { z } from "zod";
 import { DISPATCH } from "./dispatch-config";
+import { forEachOrganization } from "./organizations";
 import { DEPENDENCY_UNAVAILABLE, runDependencyFailure } from "./run-preflight";
 import {
 	isTerminalRunStatus,
@@ -13,6 +15,7 @@ import {
 	runTerminalEventId,
 } from "./run-state";
 import type { LeasedTask } from "./tasks";
+import { ORGANIZATION_ATTRIBUTE } from "./tenant-scope";
 
 const BUILDER_BATCH = DISPATCH.builder.batch;
 const RUN_BATCH = DISPATCH.run.batch;
@@ -93,6 +96,13 @@ export async function pendingBuilderSubmissionIds(): Promise<string[]> {
 }
 
 export async function drainBuilder(send: SendFn): Promise<number> {
+	const drained = await forEachOrganization("Builder drain", () =>
+		drainBuilderInWorkspace(send),
+	);
+	return drained.reduce((sum, count) => sum + count, 0);
+}
+
+async function drainBuilderInWorkspace(send: SendFn): Promise<number> {
 	const ids = await pendingBuilderSubmissionIds();
 	await Promise.all(ids.map((id) => dispatchBuilderSubmission(id, send)));
 	return ids.length;
@@ -191,6 +201,7 @@ export async function dispatchBuilderSubmission(
 					principalType: "user",
 					principalId: submission.conversation.userId,
 					attributes: {
+						[ORGANIZATION_ATTRIBUTE]: requireOrganizationId(),
 						purpose: "builder",
 						commandType: builderCommandType(
 							submission.commandType,
@@ -448,6 +459,13 @@ export async function pendingAgentRunIds(): Promise<string[]> {
 }
 
 export async function drainAgentRuns(send: SendFn): Promise<number> {
+	const drained = await forEachOrganization("Agent run drain", () =>
+		drainAgentRunsInWorkspace(send),
+	);
+	return drained.reduce((sum, count) => sum + count, 0);
+}
+
+async function drainAgentRunsInWorkspace(send: SendFn): Promise<number> {
 	await queueDueAgentRuns();
 
 	let dispatched = 0;
@@ -542,6 +560,7 @@ export async function dispatchAgentRun(runId: string, send: SendFn) {
 				principalType: run.initiatedById ? "user" : "runtime",
 				principalId,
 				attributes: {
+					[ORGANIZATION_ATTRIBUTE]: requireOrganizationId(),
 					purpose: "team-agent",
 					runId: run.id,
 					agentId: run.agentId,

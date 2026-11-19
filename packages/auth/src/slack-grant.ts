@@ -1,5 +1,6 @@
 import { db } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import type { OauthAccess } from "@crm/validation";
 import { SLACK_PROVIDER_ID } from "./scopes";
 import { SLACK_CONNECTION } from "./slack-config";
@@ -29,11 +30,17 @@ export async function replaceSlackConnection(account: {
 	id: string;
 	accountId: string;
 }): Promise<void> {
+	const organizationId = requireOrganizationId();
+
 	await db.$transaction(async (tx) => {
 		await lockIdempotencyKey(tx, SLACK_CONNECTION.locks.connection);
 
 		await tx.account.deleteMany({
-			where: { providerId: SLACK_PROVIDER_ID, id: { not: account.id } },
+			where: {
+				providerId: SLACK_PROVIDER_ID,
+				id: { not: account.id },
+				user: { members: { some: { organizationId } } },
+			},
 		});
 
 		const install = await tx.slackInstallation.findUnique({
@@ -58,8 +65,10 @@ export async function replaceSlackConnection(account: {
 		};
 
 		await tx.slackWorkspaceGrant.upsert({
-			where: { teamId: install.teamId },
-			create: { teamId: install.teamId, ...grant },
+			where: {
+				organizationId_teamId: { organizationId, teamId: install.teamId },
+			},
+			create: { organizationId, teamId: install.teamId, ...grant },
 			update: grant,
 		});
 	});

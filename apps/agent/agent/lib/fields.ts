@@ -14,6 +14,7 @@ import {
 	writeValues,
 } from "@crm/db/fields";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { currentFocus } from "./focus";
 
 const WITH_OPTIONS = { options: { orderBy: { position: "asc" } } } as const;
@@ -130,7 +131,13 @@ export async function createField(input: {
 	}
 
 	const taken = await db.fieldDefinition.findUnique({
-		where: { entity_key: { entity: input.entity, key } },
+		where: {
+			organizationId_entity_key: {
+				organizationId: requireOrganizationId(),
+				entity: input.entity,
+				key,
+			},
+		},
 		select: { id: true },
 	});
 
@@ -181,7 +188,13 @@ export async function updateFieldBrief(input: {
 	agentFilled?: boolean;
 }): Promise<SerializedField | { updated: false; reason: string }> {
 	const existing = await db.fieldDefinition.findUnique({
-		where: { entity_key: { entity: input.entity, key: input.key } },
+		where: {
+			organizationId_entity_key: {
+				organizationId: requireOrganizationId(),
+				entity: input.entity,
+				key: input.key,
+			},
+		},
 		select: { id: true },
 	});
 
@@ -206,7 +219,13 @@ export async function archiveField(input: {
 	key: string;
 }): Promise<{ archived: boolean; reason?: string }> {
 	const existing = await db.fieldDefinition.findUnique({
-		where: { entity_key: { entity: input.entity, key: input.key } },
+		where: {
+			organizationId_entity_key: {
+				organizationId: requireOrganizationId(),
+				entity: input.entity,
+				key: input.key,
+			},
+		},
 		select: { id: true },
 	});
 

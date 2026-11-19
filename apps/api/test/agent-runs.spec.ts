@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth/organization";
+import { DEFAULT_WORKSPACE_NAME } from "@crm/auth/organization";
 import { db } from "@crm/db";
-import { workspaceSlug } from "@crm/db/workspace";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
+import { workspaceSlug } from "@crm/db/workspace-slug";
 import { AgentAccessService } from "../src/agent/agent-access.service";
 import { AgentRunsService } from "../src/agent/agent-runs.service";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
@@ -26,10 +27,10 @@ const service = new AgentRunsService(db, new AgentAccessService(db), trigger);
 
 beforeAll(async () => {
 	await db.organization.upsert({
-		where: { id: WORKSPACE_ID },
+		where: { id: TEST_ORGANIZATION.id },
 		update: {},
 		create: {
-			id: WORKSPACE_ID,
+			id: TEST_ORGANIZATION.id,
 			name: DEFAULT_WORKSPACE_NAME,
 			slug: workspaceSlug(DEFAULT_WORKSPACE_NAME),
 			createdAt: new Date(),
@@ -52,7 +53,7 @@ beforeAll(async () => {
 	await db.member.create({
 		data: {
 			id: memberId,
-			organizationId: WORKSPACE_ID,
+			organizationId: TEST_ORGANIZATION.id,
 			userId,
 			role: "member",
 			createdAt: new Date(),

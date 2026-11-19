@@ -1,6 +1,10 @@
 import { auth } from "@crm/auth/auth";
-import { isGoogleConfigured, isMicrosoftConfigured } from "@crm/auth/env";
-import { WORKSPACE_ID, workspaceRoleOf } from "@crm/auth/organization";
+import {
+	isEmailPasswordEnabled,
+	isGoogleConfigured,
+	isMicrosoftConfigured,
+} from "@crm/auth/env";
+import { workspaceRoleOf } from "@crm/auth/organization";
 import {
 	canConfigureSso,
 	ssoCallbackBase,
@@ -8,6 +12,7 @@ import {
 	ssoProviderName,
 } from "@crm/auth/sso";
 import type { Db, Prisma } from "@crm/db";
+import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import {
 	BadRequestException,
 	ForbiddenException,
@@ -115,15 +120,28 @@ export class SsoService {
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async signInOptions(): Promise<SignInOptions> {
-		const rows = await this.db.ssoProvider.findMany({
-			where: { organizationId: WORKSPACE_ID },
-			select: { providerId: true },
-			orderBy: { providerId: "asc" },
-		});
+		const rows = await runAsSystem(
+			"list sign-in providers on the public page",
+			async () => {
+				const workspaces = await this.db.organization.findMany({
+					select: { id: true },
+					take: 2,
+				});
+				const only = workspaces.length === 1 ? workspaces[0] : undefined;
+				if (!only) return [];
+
+				return this.db.ssoProvider.findMany({
+					where: { organizationId: only.id },
+					select: { providerId: true },
+					orderBy: { providerId: "asc" },
+				});
+			},
+		);
 
 		return {
 			google: isGoogleConfigured(),
 			microsoft: isMicrosoftConfigured(),
+			emailPassword: isEmailPasswordEnabled(),
 			providers: rows.map((row) => ({
 				providerId: row.providerId,
 				name: ssoProviderName(row.providerId),
@@ -178,7 +196,7 @@ export class SsoService {
 					providerId: input.providerId,
 					issuer: input.issuer,
 					domain: domains.join(","),
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					oidcConfig: {
 						clientId: input.clientId,
 						clientSecret: input.clientSecret,
@@ -229,7 +247,7 @@ export class SsoService {
 	private searchWhere(q: string): Prisma.SsoProviderWhereInput {
 		const term = q.trim();
 		const where: Prisma.SsoProviderWhereInput = {
-			organizationId: WORKSPACE_ID,
+			organizationId: requireOrganizationId(),
 		};
 
 		if (term) {

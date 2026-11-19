@@ -1,5 +1,5 @@
 import { db } from "@crm/db";
-import { WORKSPACE_ID } from "@crm/db/workspace";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	type AgentManifest,
 	InvalidAgentManifest,
@@ -35,7 +35,7 @@ export async function missingRunDependencies(
 		const connection = await db.mcpConnection.findUnique({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug: grant.platformSlug,
 				},
 			},

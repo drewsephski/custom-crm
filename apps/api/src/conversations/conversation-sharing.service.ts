@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { WORKSPACE_ID } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	ForbiddenException,
 	Injectable,
@@ -231,7 +231,10 @@ export class ConversationSharingService {
 	private async assertWorkspaceMember(userId: string): Promise<void> {
 		const member = await this.db.member.findUnique({
 			where: {
-				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
+				organizationId_userId: {
+					organizationId: requireOrganizationId(),
+					userId,
+				},
 			},
 			select: { id: true },
 		});

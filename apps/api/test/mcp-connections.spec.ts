@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createMcpSecretBox } from "@crm/auth/mcp-crypto";
 import { type AuthorizationServer, McpOAuthClient } from "@crm/auth/mcp-oauth";
 import type { Db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import {
 	assertGrantedScopeBounds,
@@ -144,6 +145,7 @@ describe("MCP connections", () => {
 	it("refuses an expired OAuth state", async () => {
 		const { service } = serviceFor({
 			oauthState: {
+				organizationId: TEST_ORGANIZATION.id,
 				id: "state-1",
 				userId,
 				consumedAt: null,
@@ -160,6 +162,7 @@ describe("MCP connections", () => {
 	it("refuses a replayed OAuth state", async () => {
 		const { service } = serviceFor({
 			oauthState: {
+				organizationId: TEST_ORGANIZATION.id,
 				id: "state-1",
 				userId,
 				consumedAt: new Date(),
@@ -257,6 +260,7 @@ describe("MCP connections", () => {
 			consumeCount: 1,
 			oauth,
 			oauthState: {
+				organizationId: TEST_ORGANIZATION.id,
 				id: "state-1",
 				userId,
 				stateHash: hash,
@@ -314,6 +318,7 @@ describe("MCP connections", () => {
 			connection: { id: "clerk-connection" },
 			oauth,
 			oauthState: {
+				organizationId: TEST_ORGANIZATION.id,
 				id: "clerk-state-row",
 				userId,
 				stateHash: hash,

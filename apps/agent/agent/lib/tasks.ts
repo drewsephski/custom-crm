@@ -1,9 +1,11 @@
 import { db, type Prisma } from "@crm/db";
 import { MAX_ATTEMPTS, RETIRED_OUTCOME } from "@crm/db/agent-tasks";
+import { runAsSystem } from "@crm/db/tenancy";
 import { DISPATCH } from "./dispatch-config";
 
 export type LeasedTask = {
 	id: string;
+	organizationId: string;
 	contactId: string | null;
 	companyId: string | null;
 	dealId: string | null;
@@ -18,6 +20,7 @@ export type LeasedTask = {
 
 export type TaskSubject = {
 	id: string;
+	organizationId: string;
 	contactId: string | null;
 	companyId: string | null;
 	dealId: string | null;
@@ -39,7 +42,10 @@ export async function claimDue(
 
 	const onlyMode = "only" in kinds;
 
-	const claimed = await db.$queryRaw<LeasedTask[]>`
+	const claimed = await runAsSystem(
+		"lease due agent tasks across workspaces",
+		() =>
+			db.$queryRaw<LeasedTask[]>`
 		UPDATE "agentTask" AS t
 		SET "leasedUntil" = ${until},
 			"startedAt" = COALESCE(t."startedAt", ${now}),
@@ -59,9 +65,10 @@ export async function claimDue(
 			FOR UPDATE SKIP LOCKED
 		) AS due
 		WHERE t.id = due.id
-		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind, t.reason, t.payload,
+		RETURNING t.id, t."organizationId", t."contactId", t."companyId", t."dealId", t.kind, t.reason, t.payload,
 			t.budget, t.attempts, t.priority, t."dueAt";
-	`;
+	`,
+	);
 
 	return claimed.sort(
 		(a, b) => b.priority - a.priority || a.dueAt.getTime() - b.dueAt.getTime(),
@@ -73,7 +80,10 @@ export async function retireExhausted(
 ): Promise<TaskSubject[]> {
 	const now = new Date();
 
-	return db.$queryRaw<TaskSubject[]>`
+	return runAsSystem(
+		"retire exhausted agent tasks across workspaces",
+		() =>
+			db.$queryRaw<TaskSubject[]>`
 		UPDATE "agentTask" AS t
 		SET "finishedAt" = ${now},
 			"outcome" = ${RETIRED_OUTCOME}
@@ -87,8 +97,9 @@ export async function retireExhausted(
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind;
-	`;
+		RETURNING t.id, t."organizationId", t."contactId", t."companyId", t."dealId", t.kind;
+	`,
+	);
 }
 
 export async function completeTask(
@@ -111,6 +122,7 @@ export async function completeTask(
 		where: { id: taskId },
 		select: {
 			id: true,
+			organizationId: true,
 			contactId: true,
 			companyId: true,
 			dealId: true,
@@ -124,6 +136,7 @@ export async function taskSubject(taskId: string): Promise<TaskSubject | null> {
 		where: { id: taskId },
 		select: {
 			id: true,
+			organizationId: true,
 			contactId: true,
 			companyId: true,
 			dealId: true,

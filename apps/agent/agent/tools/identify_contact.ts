@@ -5,6 +5,7 @@ import { WEIGHTS } from "../lib/evidence";
 import { recordFact } from "../lib/facts";
 import { focusOn } from "../lib/focus";
 import { assertResearchPurpose } from "../lib/session-purpose";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -26,25 +27,27 @@ export default defineTool({
 		sourceUrl: z.string().describe("The page a rep should open to check."),
 	}),
 	async execute(input, ctx) {
-		assertResearchPurpose(ctx);
-		focusOn({ contactId: input.contactId });
+		return inSessionTenant(ctx, async () => {
+			assertResearchPurpose(ctx);
+			focusOn({ contactId: input.contactId });
 
-		const result = await recordFact({
-			contactId: input.contactId,
-			field: "name",
-			value: input.fullName,
-			evidence: input.evidence as Evidence[],
-			method: "identity",
-			sourceUrl: input.sourceUrl,
+			const result = await recordFact({
+				contactId: input.contactId,
+				field: "name",
+				value: input.fullName,
+				evidence: input.evidence as Evidence[],
+				method: "identity",
+				sourceUrl: input.sourceUrl,
+			});
+
+			return {
+				applied: result.applied,
+				stored: result.stored,
+				band: result.band,
+				score: Number(result.score.toFixed(2)),
+				rationale: result.rationale,
+				reason: result.reason || undefined,
+			};
 		});
-
-		return {
-			applied: result.applied,
-			stored: result.stored,
-			band: result.band,
-			score: Number(result.score.toFixed(2)),
-			rationale: result.rationale,
-			reason: result.reason || undefined,
-		};
 	},
 });

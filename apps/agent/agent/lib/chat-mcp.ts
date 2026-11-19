@@ -1,5 +1,5 @@
 import { db } from "@crm/db";
-import { WORKSPACE_ID } from "@crm/db/workspace";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { vendorAccess } from "@crm/mcp-integrations/catalog";
 import type { Vendor } from "@crm/mcp-integrations/vendor";
 import type { AgentConnectionRequestStatus } from "@crm/validation/agent-connection-request";
@@ -81,7 +81,7 @@ export function chatCallApprovalStatus(
 
 export async function loadChatMcpConnections(): Promise<ChatMcpConnection[]> {
 	const connections = await db.mcpConnection.findMany({
-		where: { organizationId: WORKSPACE_ID },
+		where: { organizationId: requireOrganizationId() },
 		select: {
 			id: true,
 			platformSlug: true,
@@ -126,7 +126,7 @@ export function buildChatMcpConnections(
 					description: `${vendor.name}: ${vendor.presentation.description}`,
 					instanceKey: connection
 						? `${connection.id}:${mode}`
-						: `${WORKSPACE_ID}:${vendor.slug}`,
+						: `${requireOrganizationId()}:${vendor.slug}`,
 					tools: {
 						allow: connection?.toolSnapshots.map((tool) => tool.name) ?? [],
 					},

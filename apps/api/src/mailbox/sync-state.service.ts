@@ -4,6 +4,7 @@ import {
 	type MailboxSyncModel as MailboxSync,
 	type Prisma,
 } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import type { SyncSource } from "./mailbox.constants";
@@ -18,7 +19,13 @@ export class SyncStateService {
 
 	async get(userId: string, source: SyncSource): Promise<MailboxSync | null> {
 		return this.db.mailboxSync.findUnique({
-			where: { userId_source: { userId, source } },
+			where: {
+				organizationId_userId_source: {
+					organizationId: requireOrganizationId(),
+					userId,
+					source,
+				},
+			},
 		});
 	}
 
@@ -64,7 +71,13 @@ export class SyncStateService {
 		options: { autoCreate: boolean },
 	): Promise<MailboxSync> {
 		return this.db.mailboxSync.upsert({
-			where: { userId_source: { userId, source } },
+			where: {
+				organizationId_userId_source: {
+					organizationId: requireOrganizationId(),
+					userId,
+					source,
+				},
+			},
 			create: {
 				userId,
 				source,

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DEFAULT_WORKSPACE_NAME, WORKSPACE_ID } from "@crm/auth/organization";
+import { DEFAULT_WORKSPACE_NAME } from "@crm/auth/organization";
 import { db } from "@crm/db";
-import { workspaceSlug } from "@crm/db/workspace";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
+import { workspaceSlug } from "@crm/db/workspace-slug";
 import { z } from "zod";
 import {
 	builderConversationCreateInput,
@@ -38,10 +39,10 @@ beforeAll(async () => {
 	await db.user.deleteMany({ where: { id: userId } });
 	await db.contact.deleteMany({ where: { email } });
 	await db.organization.upsert({
-		where: { id: WORKSPACE_ID },
+		where: { id: TEST_ORGANIZATION.id },
 		update: {},
 		create: {
-			id: WORKSPACE_ID,
+			id: TEST_ORGANIZATION.id,
 			name: DEFAULT_WORKSPACE_NAME,
 			slug: workspaceSlug(DEFAULT_WORKSPACE_NAME),
 			createdAt: new Date(),
@@ -54,7 +55,7 @@ beforeAll(async () => {
 	await db.member.create({
 		data: {
 			id: memberId,
-			organizationId: WORKSPACE_ID,
+			organizationId: TEST_ORGANIZATION.id,
 			userId,
 			role: "member",
 			createdAt: new Date(),

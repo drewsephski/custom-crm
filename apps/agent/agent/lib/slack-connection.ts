@@ -1,8 +1,13 @@
 import { db } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 
 export async function slackAccessToken(): Promise<string | null> {
 	const account = await db.account.findFirst({
-		where: { providerId: "slack", accessToken: { not: null } },
+		where: {
+			providerId: "slack",
+			accessToken: { not: null },
+			user: { members: { some: { organizationId: requireOrganizationId() } } },
+		},
 		orderBy: { updatedAt: "desc" },
 		select: { accessToken: true },
 	});

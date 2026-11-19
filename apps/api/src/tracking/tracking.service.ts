@@ -2,13 +2,13 @@ import { appUrl } from "@crm/auth/env";
 import {
 	canManageTracking,
 	isWorkspaceRole,
-	WORKSPACE_ID,
 	type WorkspaceRole,
 } from "@crm/auth/organization";
 import { type Db, DomainScope, Prisma } from "@crm/db";
 import { describeTouch } from "@crm/db/attribution";
 import { safeFetch } from "@crm/db/safe-fetch";
-import { SETTINGS_ID } from "@crm/db/settings";
+import { settingsKey } from "@crm/db/settings";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	COOKIE_LIFETIMES,
 	gtmContainers,
@@ -51,7 +51,7 @@ export class TrackingService {
 	async settings(userId: string): Promise<TrackingSettings> {
 		const [row, domains, latest, pageViews, submissions] = await Promise.all([
 			this.db.appSetting.findUnique({
-				where: { id: SETTINGS_ID },
+				where: settingsKey(),
 				select: {
 					trackingSiteId: true,
 					trackingCrossDomain: true,
@@ -132,8 +132,8 @@ export class TrackingService {
 		}[flag];
 
 		await this.db.appSetting.upsert({
-			where: { id: SETTINGS_ID },
-			create: { id: SETTINGS_ID, [column]: enabled },
+			where: settingsKey(),
+			create: { ...settingsKey(), [column]: enabled },
 			update: { [column]: enabled },
 		});
 
@@ -148,8 +148,8 @@ export class TrackingService {
 		}
 
 		await this.db.appSetting.upsert({
-			where: { id: SETTINGS_ID },
-			create: { id: SETTINGS_ID, trackingCookieDays: days },
+			where: settingsKey(),
+			create: { ...settingsKey(), trackingCookieDays: days },
 			update: { trackingCookieDays: days },
 		});
 
@@ -225,7 +225,7 @@ export class TrackingService {
 
 		const domains = await this.db.trackedDomain.count();
 		const row = await this.db.appSetting.findUnique({
-			where: { id: SETTINGS_ID },
+			where: settingsKey(),
 			select: { trackingLimitToDomains: true },
 		});
 
@@ -482,7 +482,7 @@ export class TrackingService {
 
 	private async roleOf(userId: string): Promise<WorkspaceRole | null> {
 		const member = await this.db.member.findFirst({
-			where: { organizationId: WORKSPACE_ID, userId },
+			where: { organizationId: requireOrganizationId(), userId },
 			select: { role: true },
 		});
 

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Db } from "./client";
-import { SETTINGS_ID } from "./settings";
+import { settingsKey } from "./settings";
+import { requireOrganizationId } from "./tenancy";
 
 export const SITE_ID_PREFIX = "cmp_";
 
@@ -59,11 +60,11 @@ export interface TrackingConfig {
 export const LINKER_MAX_AGE_SECONDS = 120;
 
 export function rateWindowKey(at: Date = new Date()): string {
-	return `rate:${Math.floor(at.getTime() / 60_000)}`;
+	return `rate:${Math.floor(at.getTime() / 60_000)}:${requireOrganizationId()}`;
 }
 
 export function contactWindowKey(at: Date = new Date()): string {
-	return `contacts:${Math.floor(at.getTime() / 3_600_000)}`;
+	return `contacts:${Math.floor(at.getTime() / 3_600_000)}:${requireOrganizationId()}`;
 }
 
 export function windowExpiry(key: string, at: Date = new Date()): Date {
@@ -256,7 +257,7 @@ export async function readTrackingConfig(
 ): Promise<TrackingConfig | null> {
 	const [settings, domains] = await Promise.all([
 		db.appSetting.findUnique({
-			where: { id: SETTINGS_ID },
+			where: settingsKey(),
 			select: {
 				trackingSiteId: true,
 				trackingCrossDomain: true,

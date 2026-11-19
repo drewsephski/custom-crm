@@ -1,5 +1,6 @@
 import type { Db } from "@crm/db";
-import { SETTINGS_ID } from "@crm/db/settings";
+import { settingsKey } from "@crm/db/settings";
+import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import {
 	configHash,
 	mintSiteId,
@@ -13,7 +14,9 @@ import { InjectDatabase } from "../database/database.constants";
 
 const CONFIG_TTL_MS = 5 * 60_000;
 
-const CONFIG_KEY = "tracking:config";
+function configKey(): string {
+	return `tracking:config:${requireOrganizationId()}`;
+}
 
 export interface CompiledConfig {
 	config: TrackingConfig;
@@ -32,7 +35,7 @@ export class TrackingConfigService {
 	) {}
 
 	async compiled(): Promise<CompiledConfig | null> {
-		const cached = await this.cache.get<CompiledConfig>(CONFIG_KEY);
+		const cached = await this.cache.get<CompiledConfig>(configKey());
 		if (cached) return cached;
 
 		const read = this.generation;
@@ -42,7 +45,7 @@ export class TrackingConfigService {
 		const compiled = { config, hash: configHash(config) };
 
 		if (read === this.generation && (await this.current(compiled.hash))) {
-			await this.cache.set(CONFIG_KEY, compiled, CONFIG_TTL_MS);
+			await this.cache.set(configKey(), compiled, CONFIG_TTL_MS);
 		}
 
 		return compiled;
@@ -50,11 +53,24 @@ export class TrackingConfigService {
 
 	private async current(hash: string): Promise<boolean> {
 		const row = await this.db.appSetting.findUnique({
-			where: { id: SETTINGS_ID },
+			where: settingsKey(),
 			select: { trackingConfigHash: true },
 		});
 
 		return row?.trackingConfigHash === hash;
+	}
+
+	async organizationForSite(siteId: string): Promise<string | null> {
+		const row = await runAsSystem(
+			"find the workspace that owns a tracking site",
+			() =>
+				this.db.appSetting.findUnique({
+					where: { trackingSiteId: siteId },
+					select: { organizationId: true },
+				}),
+		);
+
+		return row?.organizationId ?? null;
 	}
 
 	async forSite(siteId: string): Promise<CompiledConfig | null> {
@@ -66,13 +82,13 @@ export class TrackingConfigService {
 		this.generation += 1;
 		const written = this.generation;
 
-		await this.cache.del(CONFIG_KEY);
+		await this.cache.del(configKey());
 
 		const config = await readTrackingConfig(this.db);
 
 		if (!config) {
 			await this.db.appSetting.updateMany({
-				where: { id: SETTINGS_ID },
+				where: settingsKey(),
 				data: { trackingConfigHash: null },
 			});
 
@@ -82,19 +98,19 @@ export class TrackingConfigService {
 		const hash = configHash(config);
 
 		await this.db.appSetting.update({
-			where: { id: SETTINGS_ID },
+			where: settingsKey(),
 			data: { trackingConfigHash: hash },
 		});
 
 		if (written !== this.generation) return;
 		if (!(await this.current(hash))) return;
 
-		await this.cache.set(CONFIG_KEY, { config, hash }, CONFIG_TTL_MS);
+		await this.cache.set(configKey(), { config, hash }, CONFIG_TTL_MS);
 	}
 
 	async ensureSiteId(): Promise<string> {
 		const existing = await this.db.appSetting.findUnique({
-			where: { id: SETTINGS_ID },
+			where: settingsKey(),
 			select: { trackingSiteId: true },
 		});
 
@@ -103,8 +119,8 @@ export class TrackingConfigService {
 		const trackingSiteId = mintSiteId();
 
 		await this.db.appSetting.upsert({
-			where: { id: SETTINGS_ID },
-			create: { id: SETTINGS_ID, trackingSiteId },
+			where: settingsKey(),
+			create: { ...settingsKey(), trackingSiteId },
 			update: { trackingSiteId },
 		});
 
@@ -119,8 +135,8 @@ export class TrackingConfigService {
 		const trackingSiteId = mintSiteId();
 
 		await this.db.appSetting.upsert({
-			where: { id: SETTINGS_ID },
-			create: { id: SETTINGS_ID, trackingSiteId },
+			where: settingsKey(),
+			create: { ...settingsKey(), trackingSiteId },
 			update: { trackingSiteId },
 		});
 

@@ -3,6 +3,7 @@ import type { Db } from "@crm/db";
 import { Prisma, RateSource } from "@crm/db";
 import { CURRENCIES, currencyName, normalizeCurrency } from "@crm/db/currency";
 import { writeReportingCurrency } from "@crm/db/settings";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	BadRequestException,
 	ForbiddenException,
@@ -158,7 +159,8 @@ export class CurrencyService {
 
 		await this.db.exchangeRate.upsert({
 			where: {
-				baseCurrency_quoteCurrency_source: {
+				organizationId_baseCurrency_quoteCurrency_source: {
+					organizationId: requireOrganizationId(),
 					baseCurrency,
 					quoteCurrency,
 					source: RateSource.MANUAL,

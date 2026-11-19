@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import type { SendFn } from "eve/channels";
 import { z } from "zod";
 import audit from "../agent/hooks/audit";
@@ -569,7 +570,11 @@ describe("durable custom-agent runtime", () => {
 				id: `durable-session-${suffix}-usage`,
 				auth: {
 					current: {
-						attributes: { purpose: "team-agent", runId: run.id },
+						attributes: {
+							purpose: "team-agent",
+							runId: run.id,
+							organizationId: TEST_ORGANIZATION.id,
+						},
 					},
 					initiator: null,
 				},
@@ -629,7 +634,11 @@ describe("durable custom-agent runtime", () => {
 					parent: { id: rootSessionId },
 					auth: {
 						current: {
-							attributes: { purpose: "team-agent", runId: run.id },
+							attributes: {
+								purpose: "team-agent",
+								runId: run.id,
+								organizationId: TEST_ORGANIZATION.id,
+							},
 						},
 						initiator: null,
 					},

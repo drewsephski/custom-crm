@@ -80,6 +80,13 @@ export default defineConfig({
 					"anti-slop/no-runtime-typeof": "off",
 				},
 			},
+			{
+				files: ["packages/db/src/scoped-adapter.ts"],
+				rules: {
+					"anti-slop/no-object-parameters": "off",
+					"anti-slop/no-runtime-typeof": "off",
+				},
+			},
 		],
 	},
 });

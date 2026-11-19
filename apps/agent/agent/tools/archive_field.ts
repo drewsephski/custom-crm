@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { sensitiveWrite } from "../lib/approval";
 import { archiveField } from "../lib/fields";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -13,7 +14,9 @@ export default defineTool({
 	approval: sensitiveWrite(
 		"Say which field you would archive and let a rep do it from the Fields sheet.",
 	),
-	async execute(input) {
-		return archiveField(input);
+	async execute(input, ctx) {
+		return inSessionTenant(ctx, async () => {
+			return archiveField(input);
+		});
 	},
 });

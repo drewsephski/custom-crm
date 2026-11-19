@@ -1,6 +1,7 @@
 import { workspaceDomains } from "@crm/auth/workspace";
 import { ActivityType, type Db, Prisma, RecordSource } from "@crm/db";
 import type { Touch } from "@crm/db/attribution";
+import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import {
 	CONTACT_CAP_REASON,
 	CONTACTS_PER_HOUR,
@@ -209,7 +210,12 @@ export class TrackingFilingService {
 		const last = columns(context.lastTouch, "last");
 
 		await this.db.trackedVisitor.upsert({
-			where: { id: visitorId },
+			where: {
+				organizationId_id: {
+					organizationId: requireOrganizationId(),
+					id: visitorId,
+				},
+			},
 			create: { id: visitorId, contactId, ...first, ...last },
 			update: { contactId, ...last },
 		});
@@ -223,9 +229,16 @@ export class TrackingFilingService {
 
 		if (contact?.ownerId) return contact.ownerId;
 
-		const anyUser = await this.db.user.findFirst({ select: { id: true } });
+		const organizationId = requireOrganizationId();
+		const owner = await runAsSystem("pick who files a form submission", () =>
+			this.db.member.findFirst({
+				where: { organizationId },
+				orderBy: [{ role: "desc" }, { createdAt: "asc" }],
+				select: { userId: true },
+			}),
+		);
 
-		return anyUser?.id ?? null;
+		return owner?.userId ?? null;
 	}
 
 	private async skip(
@@ -250,7 +263,12 @@ export class TrackingFilingService {
 				select: { email: true },
 			}),
 			this.db.suppressedDomain.findUnique({
-				where: { domain },
+				where: {
+					organizationId_domain: {
+						organizationId: requireOrganizationId(),
+						domain,
+					},
+				},
 				select: { domain: true },
 			}),
 		]);

@@ -1,5 +1,6 @@
 "use client";
 
+import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createTRPCClient, httpBatchLink, type TRPCClient } from "@trpc/client";
@@ -10,6 +11,7 @@ import {
 import type { AppRouter } from "api/app-router";
 import type { FC, ReactNode } from "react";
 import { useState } from "react";
+import { slugFromPathname } from "../workspace-slug";
 import { getQueryClient } from "./query-client";
 
 const { TRPCProvider: ContextProvider, useTRPC: useTRPCContext } =
@@ -28,7 +30,17 @@ export function TRPCReactProvider({ children }: { children: ReactNode }) {
 	const queryClient = getQueryClient();
 	const [trpcClient] = useState(() =>
 		createTRPCClient<AppRouter>({
-			links: [httpBatchLink({ url: "/api/trpc" })],
+			links: [
+				httpBatchLink({
+					url: "/api/trpc",
+					headers: () => {
+						const slug =
+							slugFromPathname(window.location.pathname) ??
+							new URLSearchParams(window.location.search).get("workspace");
+						return slug ? { [WORKSPACE_HEADER]: slug } : {};
+					},
+				}),
+			],
 		}),
 	);
 

@@ -25,6 +25,7 @@ import type { EnvironmentVariables } from "../config/env.validation";
 import { ContactsService } from "../contacts/contacts.service";
 import { InjectDatabase } from "../database/database.constants";
 import { DealsService } from "../deals/deals.service";
+import { forEachOrganization } from "../tenancy/for-each-organization";
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -80,27 +81,44 @@ export class ArchiveRetentionController {
 			throw new ForbiddenException();
 		}
 
-		const retentionDays = await readArchiveRetentionDays(this.db);
-		const before = new Date(Date.now() - retentionDays * DAY_MS);
+		const outcomes = await forEachOrganization(
+			this.db,
+			this.logger,
+			"Archive retention",
+			async () => {
+				const retentionDays = await readArchiveRetentionDays(this.db);
+				const before = new Date(Date.now() - retentionDays * DAY_MS);
 
-		const [companies, contacts, deals] = await Promise.all([
-			this.companies.purgeExpired(before),
-			this.contacts.purgeExpired(before),
-			this.deals.purgeExpired(before),
-		]);
+				const [companies, contacts, deals] = await Promise.all([
+					this.companies.purgeExpired(before),
+					this.contacts.purgeExpired(before),
+					this.deals.purgeExpired(before),
+				]);
+
+				return { retentionDays, companies, contacts, deals };
+			},
+		);
+
+		const swept = outcomes.flatMap((outcome) =>
+			outcome.ok ? [outcome.value] : [],
+		);
 
 		this.logger.log({
 			message: "Archive retention swept",
-			retentionDays,
-			companies: companies.succeeded,
-			companiesSkipped: companies.skipped,
-			contacts: contacts.succeeded,
-			contactsSkipped: contacts.skipped,
-			deals: deals.succeeded,
-			dealsSkipped: deals.skipped,
+			workspaces: outcomes.length,
+			failed: outcomes.length - swept.length,
+			companies: swept.reduce((sum, run) => sum + run.companies.succeeded, 0),
+			contacts: swept.reduce((sum, run) => sum + run.contacts.succeeded, 0),
+			deals: swept.reduce((sum, run) => sum + run.deals.succeeded, 0),
 		});
 
-		return { retentionDays, companies, contacts, deals };
+		return {
+			workspaces: outcomes.length,
+			failed: outcomes.length - swept.length,
+			companies: swept.reduce((sum, run) => sum + run.companies.succeeded, 0),
+			contacts: swept.reduce((sum, run) => sum + run.contacts.succeeded, 0),
+			deals: swept.reduce((sum, run) => sum + run.deals.succeeded, 0),
+		};
 	}
 }
 

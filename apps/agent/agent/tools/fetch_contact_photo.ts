@@ -4,6 +4,7 @@ import { z } from "zod";
 import { spend } from "../lib/focus";
 import { runPortrait } from "../lib/portrait";
 import { assertResearchPurpose } from "../lib/session-purpose";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -16,17 +17,19 @@ export default defineTool({
 			.describe("Replace an existing photo. Only when a rep asked."),
 	}),
 	async execute({ contactId, force }, ctx) {
-		assertResearchPurpose(ctx);
-		if (!blobEnabled()) {
-			return {
-				stored: false as const,
-				configured: false as const,
-				reason:
-					"This install has no BLOB_READ_WRITE_TOKEN, so there is nowhere to keep a copy, and " +
-					"the source URLs expire. Retrying will not help.",
-			};
-		}
+		return inSessionTenant(ctx, async () => {
+			assertResearchPurpose(ctx);
+			if (!blobEnabled()) {
+				return {
+					stored: false as const,
+					configured: false as const,
+					reason:
+						"This install has no BLOB_READ_WRITE_TOKEN, so there is nowhere to keep a copy, and " +
+						"the source URLs expire. Retrying will not help.",
+				};
+			}
 
-		return runPortrait({ contactId, spend, force });
+			return runPortrait({ contactId, spend, force });
+		});
 	},
 });

@@ -1,6 +1,7 @@
 import { isGoogleConfigured } from "@crm/auth/env";
 import { GOOGLE_PROVIDER_ID, signsInWithGoogle } from "@crm/auth/scopes";
 import type { Db, Prisma } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { normalizeDomain } from "../companies/domain";
 import { ActivityStampService } from "../crm/activity-stamp.service";
@@ -102,6 +103,9 @@ export class GoogleConnectionService {
 		const accounts = await this.db.account.findMany({
 			where: {
 				providerId: GOOGLE_PROVIDER_ID,
+				user: {
+					mailboxSyncs: { some: { organizationId: requireOrganizationId() } },
+				},
 				OR: GOOGLE_SYNC_SOURCES.map((source) => ({
 					scope: { contains: SCOPE_FOR_SOURCE[source] },
 				})),
@@ -192,15 +196,20 @@ export class GoogleConnectionService {
 		}
 
 		await this.db.suppressedDomain.upsert({
-			where: { domain: normalised },
+			where: {
+				organizationId_domain: {
+					organizationId: requireOrganizationId(),
+					domain: normalised,
+				},
+			},
 			create: { domain: normalised, reason: options.reason ?? null },
 			update: { reason: options.reason ?? null },
 		});
 
 		if (!options.purge) return { domain: normalised, purged: 0 };
 
-		const company = await this.db.company.findUnique({
-			where: { domain: normalised },
+		const company = await this.db.company.findFirst({
+			where: { domain: normalised, archivedAt: null },
 			select: { id: true },
 		});
 

@@ -1,6 +1,7 @@
 import { plainToInstance, Type } from "class-transformer";
 import {
 	IsEnum,
+	IsIn,
 	IsInt,
 	IsOptional,
 	IsString,
@@ -42,12 +43,31 @@ export class EnvironmentVariables {
 	})
 	BETTER_AUTH_SECRET!: string;
 
+	@IsOptional()
 	@IsString()
-	@MinLength(1, {
+	ALLOWED_SIGN_IN?: string;
+
+	@IsOptional()
+	@IsIn(["true", "false"])
+	AUTH_EMAIL_PASSWORD?: string;
+
+	@IsOptional()
+	@IsString()
+	ANTHROPIC_API_KEY?: string;
+
+	@IsOptional()
+	@Matches(/^(anthropic\/)?claude-[a-z0-9-]+$/, {
 		message:
-			'ALLOWED_SIGN_IN is required — it is the only thing deciding who can sign in. Set it to your email domain, e.g. ALLOWED_SIGN_IN="acme.com", or to a single address for a one-person install.',
+			"ANTHROPIC_MODEL must be a native Anthropic model id, like claude-haiku-5-5.",
 	})
-	ALLOWED_SIGN_IN!: string;
+	ANTHROPIC_MODEL?: string;
+
+	@IsOptional()
+	@Matches(/^(anthropic\/)?claude-[a-z0-9-]+$/, {
+		message:
+			"ANTHROPIC_COMPLEX_MODEL must be a native Anthropic model id, like claude-opus-5-5.",
+	})
+	ANTHROPIC_COMPLEX_MODEL?: string;
 
 	@IsOptional()
 	@IsString()

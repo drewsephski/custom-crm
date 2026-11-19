@@ -5,6 +5,7 @@ import {
 	loadChatMcpConnections,
 } from "../lib/chat-mcp";
 import { attribute, purposeOf } from "../lib/session-purpose";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineDynamic({
 	events: {
@@ -17,11 +18,10 @@ export default defineDynamic({
 			}
 			const userId = attribute(ctx, "userId");
 			if (!userId) return null;
-			return buildChatMcpConnections(
-				vendors,
-				await loadChatMcpConnections(),
-				userId,
+			const connections = await inSessionTenant(ctx, () =>
+				loadChatMcpConnections(),
 			);
+			return buildChatMcpConnections(vendors, connections, userId);
 		},
 	},
 });

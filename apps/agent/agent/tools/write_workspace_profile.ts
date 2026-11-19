@@ -9,6 +9,7 @@ import { z } from "zod";
 import { changeWrite } from "../lib/approval";
 import { currentFocus } from "../lib/focus";
 import { assertResearchPurpose } from "../lib/session-purpose";
+import { inSessionTenant } from "../lib/tenant-scope";
 import { identity } from "../lib/workspace";
 
 const line = (what: string) =>
@@ -39,44 +40,46 @@ export default defineTool({
 	}),
 	approval: changeWrite(),
 	async execute(input, ctx) {
-		assertResearchPurpose(ctx);
-		const us = await identity();
+		return inSessionTenant(ctx, async () => {
+			assertResearchPurpose(ctx);
+			const us = await identity();
 
-		if (!us?.website) {
+			if (!us?.website) {
+				return {
+					written: false as const,
+					reason:
+						"This install has not been told its own website, so there is nothing to file a profile against.",
+				};
+			}
+
+			const narrative = input.narrative.trim();
+
+			if (narrative.length < 40) {
+				return {
+					written: false as const,
+					reason:
+						"Too short to tell anybody anything. Say what we sell and to whom, or say nothing.",
+				};
+			}
+
+			const profile = await writeWorkspaceProfile(db, {
+				website: us.website,
+				narrative,
+				sections: {
+					sells: input.sells,
+					sellsTo: input.sellsTo,
+					edge: input.edge,
+				},
+				sourceUrl: input.sourceUrl,
+				sessionId: currentFocus().sessionId,
+			});
+
 			return {
-				written: false as const,
-				reason:
-					"This install has not been told its own website, so there is nothing to file a profile against.",
+				written: true as const,
+				website: profile.website,
+				narrative: profile.narrative,
+				sections: profile.sections,
 			};
-		}
-
-		const narrative = input.narrative.trim();
-
-		if (narrative.length < 40) {
-			return {
-				written: false as const,
-				reason:
-					"Too short to tell anybody anything. Say what we sell and to whom, or say nothing.",
-			};
-		}
-
-		const profile = await writeWorkspaceProfile(db, {
-			website: us.website,
-			narrative,
-			sections: {
-				sells: input.sells,
-				sellsTo: input.sellsTo,
-				edge: input.edge,
-			},
-			sourceUrl: input.sourceUrl,
-			sessionId: currentFocus().sessionId,
 		});
-
-		return {
-			written: true as const,
-			website: profile.website,
-			narrative: profile.narrative,
-			sections: profile.sections,
-		};
 	},
 });

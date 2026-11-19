@@ -1,4 +1,5 @@
 import { db } from "@crm/db";
+import { runAsSystem, runInTenant } from "@crm/db/tenancy";
 import { connection } from "next/server";
 import { z } from "zod";
 import {
@@ -45,23 +46,31 @@ async function handler(request: Request): Promise<Response> {
 	if (!session) return failure("Not signed in.", 401);
 
 	let record: RecordContext;
+	let organizationId: string | null;
 	let builderConversation = false;
 	if (route.kind === "create") {
 		const requested = recordFromHeaders(request.headers);
 		if (!requested) return failure("Name one CRM record.", 400);
 		record = requested;
+		organizationId = await recordOrganization(requested);
 	} else {
-		const conversation = await db.agentConversation.findUnique({
-			where: { sessionId: route.sessionId },
-			select: {
-				id: true,
-				kind: true,
-				userId: true,
-				contactId: true,
-				companyId: true,
-				dealId: true,
-			},
-		});
+		const conversation = await runAsSystem(
+			"find the conversation a rep opened",
+			() =>
+				db.agentConversation.findUnique({
+					where: { sessionId: route.sessionId },
+					select: {
+						id: true,
+						organizationId: true,
+						kind: true,
+						userId: true,
+						contactId: true,
+						companyId: true,
+						dealId: true,
+					},
+				}),
+		);
+		organizationId = conversation?.organizationId ?? null;
 		const builderId = request.headers.get("x-crm-builder-conversation");
 		if (
 			!conversation ||
@@ -79,12 +88,18 @@ async function handler(request: Request): Promise<Response> {
 		};
 	}
 
+	if (!organizationId || !(await isMember(session.user.id, organizationId))) {
+		return failure("Record not found.", 404);
+	}
+	const workspaceId = organizationId;
+
 	const authorization = `Bearer ${await mintBridgeToken(
 		{
 			id: session.user.id,
 			email: session.user.email,
 			name: session.user.name,
 		},
+		workspaceId,
 		record,
 	)}`;
 
@@ -168,15 +183,17 @@ async function handler(request: Request): Promise<Response> {
 		}
 		response = { ...response, sessionId: createdSessionId };
 		try {
-			await db.agentConversation.create({
-				data: {
-					kind: "RECORD",
-					sessionId: createdSessionId,
-					userId: session.user.id,
-					title: eveProxyMessageTitle(body),
-					...record,
-				},
-			});
+			await runInTenant(workspaceId, () =>
+				db.agentConversation.create({
+					data: {
+						kind: "RECORD",
+						sessionId: createdSessionId,
+						userId: session.user.id,
+						title: eveProxyMessageTitle(body),
+						...record,
+					},
+				}),
+			);
 		} catch {
 			await cancelSession(createdSessionId, authorization);
 			return failure("The conversation could not be saved.", 500);
@@ -187,6 +204,40 @@ async function handler(request: Request): Promise<Response> {
 		status: upstream.status,
 		headers: eveProxyResponseHeaders(upstream.headers),
 	});
+}
+
+async function recordOrganization(
+	record: RecordContext,
+): Promise<string | null> {
+	return runAsSystem("find the workspace of a CRM record", async () => {
+		const select = { organizationId: true } as const;
+		const row = record.contactId
+			? await db.contact.findUnique({ where: { id: record.contactId }, select })
+			: record.companyId
+				? await db.company.findUnique({
+						where: { id: record.companyId },
+						select,
+					})
+				: record.dealId
+					? await db.deal.findUnique({ where: { id: record.dealId }, select })
+					: null;
+		return row?.organizationId ?? null;
+	});
+}
+
+async function isMember(
+	userId: string,
+	organizationId: string,
+): Promise<boolean> {
+	const member = await runAsSystem(
+		"check the rep belongs to the workspace",
+		() =>
+			db.member.findUnique({
+				where: { organizationId_userId: { organizationId, userId } },
+				select: { id: true },
+			}),
+	);
+	return member !== null;
 }
 
 function recordFromHeaders(headers: Headers): RecordContext | null {

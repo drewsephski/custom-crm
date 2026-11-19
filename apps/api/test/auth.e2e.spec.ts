@@ -64,9 +64,14 @@ describe("Auth (e2e)", () => {
 			process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET,
 		);
 
+		const { isEmailPasswordEnabled, isGoogleConfigured } = await import(
+			"@crm/auth/env"
+		);
+
 		expect(response.body.result.data).toEqual({
-			google: true,
+			google: isGoogleConfigured(),
 			microsoft: microsoftConfigured,
+			emailPassword: isEmailPasswordEnabled(),
 			providers: [],
 		});
 	});

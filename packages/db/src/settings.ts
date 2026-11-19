@@ -1,15 +1,23 @@
+import { defaultModel } from "./ai-models";
 import type { Db } from "./client";
 import {
 	DEFAULT_REPORTING_CURRENCY,
 	isCurrencyCode,
 	normalizeCurrency,
 } from "./currency";
+import { requireOrganizationId } from "./tenancy";
 
-export const SETTINGS_ID = "app";
+export function settingsKey() {
+	return { organizationId: requireOrganizationId() };
+}
 
 export const DEFAULT_AGENT_MODEL = {
-	id: "zai/glm-5.2-fast",
-	contextWindowTokens: 1_000_000,
+	get id(): string {
+		return defaultModel().id;
+	},
+	get contextWindowTokens(): number {
+		return defaultModel().contextWindowTokens;
+	},
 } as const;
 
 export interface AgentModelSetting {
@@ -18,47 +26,18 @@ export interface AgentModelSetting {
 	isDefault: boolean;
 }
 
-export async function readAgentModel(db: Db): Promise<AgentModelSetting> {
-	const row = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
-		select: { agentModelId: true, agentModelContextWindow: true },
-	});
-
-	if (!row?.agentModelId) {
-		return { ...DEFAULT_AGENT_MODEL, isDefault: true };
-	}
-
+export function configuredAgentModel(): AgentModelSetting {
+	const model = defaultModel();
 	return {
-		id: row.agentModelId,
-		contextWindowTokens:
-			row.agentModelContextWindow ?? DEFAULT_AGENT_MODEL.contextWindowTokens,
-		isDefault: false,
+		id: model.id,
+		contextWindowTokens: model.contextWindowTokens,
+		isDefault: !process.env.ANTHROPIC_MODEL,
 	};
 }
-
-export async function writeAgentModel(
-	db: Db,
-	model: { id: string; contextWindowTokens: number } | null,
-): Promise<void> {
-	const fields = {
-		agentModelId: model?.id ?? null,
-		agentModelContextWindow: model?.contextWindowTokens ?? null,
-	};
-
-	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
-		create: { id: SETTINGS_ID, ...fields },
-		update: fields,
-	});
-}
-
-export const CONTEXT_DEV_SIGNUP_URL = "https://link.context.dev/crm";
-
-export const CONTEXT_DEV_DISCOUNT_CODE = "CRM";
 
 export async function readContextDevKey(db: Db): Promise<string | null> {
 	const row = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		select: { contextDevApiKey: true },
 	});
 
@@ -69,15 +48,15 @@ export async function writeContextDevKey(db: Db, key: string): Promise<void> {
 	const contextDevApiKey = key.trim();
 
 	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
-		create: { id: SETTINGS_ID, contextDevApiKey },
+		where: settingsKey(),
+		create: { ...settingsKey(), contextDevApiKey },
 		update: { contextDevApiKey },
 	});
 }
 
 export async function readReportingCurrency(db: Db): Promise<string> {
 	const row = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		select: { reportingCurrency: true },
 	});
 
@@ -93,8 +72,8 @@ export async function writeReportingCurrency(
 	const reportingCurrency = normalizeCurrency(code);
 
 	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
-		create: { id: SETTINGS_ID, reportingCurrency },
+		where: settingsKey(),
+		create: { ...settingsKey(), reportingCurrency },
 		update: { reportingCurrency },
 	});
 
@@ -103,7 +82,7 @@ export async function writeReportingCurrency(
 
 export async function readRatesRefreshedAt(db: Db): Promise<Date | null> {
 	const row = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		select: { ratesRefreshedAt: true },
 	});
 
@@ -115,8 +94,8 @@ export async function writeRatesRefreshedAt(
 	ratesRefreshedAt: Date,
 ): Promise<void> {
 	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
-		create: { id: SETTINGS_ID, ratesRefreshedAt },
+		where: settingsKey(),
+		create: { ...settingsKey(), ratesRefreshedAt },
 		update: { ratesRefreshedAt },
 	});
 }
@@ -129,7 +108,7 @@ export const MAX_ARCHIVE_RETENTION_DAYS = 3650;
 
 export async function readArchiveRetentionDays(db: Db): Promise<number> {
 	const row = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		select: { archiveRetentionDays: true },
 	});
 
@@ -146,8 +125,8 @@ export async function writeArchiveRetentionDays(
 	);
 
 	await db.appSetting.upsert({
-		where: { id: SETTINGS_ID },
-		create: { id: SETTINGS_ID, archiveRetentionDays },
+		where: settingsKey(),
+		create: { ...settingsKey(), archiveRetentionDays },
 		update: { archiveRetentionDays },
 	});
 

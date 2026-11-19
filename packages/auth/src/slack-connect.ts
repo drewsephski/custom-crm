@@ -7,10 +7,10 @@ import {
 } from "better-auth/api";
 import * as z from "zod";
 import {
+	activeOrganizationOfSession,
 	canManageConnections,
-	WORKSPACE_ID,
+	membershipOf,
 	WORKSPACE_ROLES,
-	workspaceRoleOf,
 } from "./organization";
 import { SLACK_PROVIDER_ID } from "./scopes";
 
@@ -37,15 +37,23 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 		});
 	}
 
-	const [role, managers] = await Promise.all([
-		workspaceRoleOf(session.user.id),
+	const organizationId = await activeOrganizationOfSession(session.session.id);
+	if (!organizationId) {
+		throw new APIError("FORBIDDEN", {
+			message: "Open a workspace before you connect Slack.",
+		});
+	}
+
+	const [membership, managers] = await Promise.all([
+		membershipOf(session.user.id, organizationId),
 		db.member.count({
 			where: {
-				organizationId: WORKSPACE_ID,
+				organizationId,
 				role: { in: [...CONNECT_MANAGER_ROLES] },
 			},
 		}),
 	]);
+	const role = membership?.role ?? null;
 
 	if (!role) {
 		throw new APIError("FORBIDDEN", {

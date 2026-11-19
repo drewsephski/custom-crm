@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import {
 	persistSlackChannels,
 	refreshSlackChannels,
@@ -20,6 +21,22 @@ async function connect() {
 			id: USER_ID,
 			name: "Slack Spec",
 			email: `${USER_ID}@example.com`,
+		},
+		update: {},
+	});
+	await db.member.upsert({
+		where: {
+			organizationId_userId: {
+				organizationId: TEST_ORGANIZATION.id,
+				userId: USER_ID,
+			},
+		},
+		create: {
+			id: `${USER_ID}-member`,
+			organizationId: TEST_ORGANIZATION.id,
+			userId: USER_ID,
+			role: "owner",
+			createdAt: new Date(),
 		},
 		update: {},
 	});
@@ -176,7 +193,7 @@ describe("persistSlackChannels", () => {
 
 		expect(await persistSlackChannels([], false)).toBe(0);
 
-		const row = await db.slackChannel.findUnique({
+		const row = await db.slackChannel.findFirst({
 			where: { id: `${PREFIX}-only` },
 			select: { available: true },
 		});

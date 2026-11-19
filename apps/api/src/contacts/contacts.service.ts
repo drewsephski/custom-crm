@@ -8,6 +8,7 @@ import {
 	type RecordSource,
 } from "@crm/db";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	ConflictException,
 	Injectable,
@@ -426,7 +427,12 @@ export class ContactsService {
 
 				if (suppress) {
 					await tx.suppressedContact.upsert({
-						where: { email: suppress },
+						where: {
+							organizationId_email: {
+								organizationId: requireOrganizationId(),
+								email: suppress,
+							},
+						},
 						create: {
 							email: suppress,
 							reason: `Deleted from the CRM (${name})`,

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { changeWrite } from "../lib/approval";
 import { assertResearchPurpose } from "../lib/session-purpose";
 import { scheduleTask } from "../lib/tasks";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 const MIN_DAYS = 1;
 const MAX_DAYS = 730;
@@ -37,18 +38,20 @@ export default defineTool({
 	}),
 	approval: changeWrite(),
 	async execute({ contactId, days, reason, budget }, ctx) {
-		assertResearchPurpose(ctx);
-		const dueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+		return inSessionTenant(ctx, async () => {
+			assertResearchPurpose(ctx);
+			const dueAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-		await scheduleTask({
-			contactId,
-			kind: "recheck",
-			reason,
-			dueAt,
-			budget,
-			priority: PRIORITY.recheck,
+			await scheduleTask({
+				contactId,
+				kind: "recheck",
+				reason,
+				dueAt,
+				budget,
+				priority: PRIORITY.recheck,
+			});
+
+			return { scheduled: true as const, dueAt: dueAt.toISOString(), reason };
 		});
-
-		return { scheduled: true as const, dueAt: dueAt.toISOString(), reason };
 	},
 });

@@ -6,42 +6,8 @@ import {
 	jsonText,
 	type WorkspaceProfileSections,
 } from "./json";
-
-export const WORKSPACE_ID = "workspace";
-
-export const DEFAULT_WORKSPACE_SLUG = "workspace";
-
-export const MAX_SLUG = 48;
-
-export const RESERVED_SLUGS: readonly string[] = [
-	"_next",
-	"api",
-	"agent",
-	"agents",
-	"chat",
-	"companies",
-	"contacts",
-	"deals",
-	"eve",
-	"grant-access",
-	"onboarding",
-	"settings",
-	"sign-in",
-];
-
-export function workspaceSlug(name: string): string {
-	const base = name
-		.normalize("NFKD")
-		.replace(/\p{M}/gu, "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.slice(0, MAX_SLUG)
-		.replace(/^-+|-+$/g, "");
-
-	if (!base) return DEFAULT_WORKSPACE_SLUG;
-
-	return RESERVED_SLUGS.includes(base) ? `${base}-crm` : base;
-}
+import { requireOrganizationId } from "./tenancy";
+import { MAX_SLUG } from "./workspace-slug";
 
 export const MAX_NARRATIVE = 320;
 
@@ -91,7 +57,7 @@ export async function readWorkspaceProfile(
 	db: Db,
 ): Promise<WorkspaceProfile | null> {
 	const row = await db.workspaceProfile.findUnique({
-		where: { id: WORKSPACE_ID },
+		where: { organizationId: requireOrganizationId() },
 		select: {
 			website: true,
 			narrative: true,
@@ -141,7 +107,7 @@ export async function readWorkspaceIdentity(
 ): Promise<WorkspaceIdentity | null> {
 	const [workspace, profile] = await Promise.all([
 		db.organization.findUnique({
-			where: { id: WORKSPACE_ID },
+			where: { id: requireOrganizationId() },
 			select: { name: true, website: true },
 		}),
 		readWorkspaceProfile(db),
@@ -176,8 +142,8 @@ export async function writeWorkspaceProfile(
 	};
 
 	const row = await db.workspaceProfile.upsert({
-		where: { id: WORKSPACE_ID },
-		create: { id: WORKSPACE_ID, ...fields },
+		where: { organizationId: requireOrganizationId() },
+		create: { organizationId: requireOrganizationId(), ...fields },
 		update: fields,
 		select: {
 			website: true,

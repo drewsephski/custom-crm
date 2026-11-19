@@ -1,9 +1,10 @@
 import "@crm/env/load";
 
+import { defaultModel } from "@crm/db/ai-models";
 import { onTelemetryProblem, syncVersion } from "@crm/telemetry";
-import { defineAgent, defineDynamic } from "eve";
+import { defineAgent } from "eve";
 import { logCapabilities } from "./lib/capabilities";
-import { selectedModel } from "./lib/model";
+import { defaultAgentModel } from "./lib/model";
 
 void logCapabilities();
 
@@ -12,9 +13,8 @@ onTelemetryProblem((message) => console.debug(`[telemetry] ${message}`));
 void syncVersion();
 
 export default defineAgent({
-	model: defineDynamic({
-		events: { "session.started": () => selectedModel() },
-	}),
+	model: defaultAgentModel(),
+	modelContextWindowTokens: defaultModel().contextWindowTokens,
 	limits: {
 		maxInputTokensPerSession: 500_000,
 		maxOutputTokensPerSession: 50_000,

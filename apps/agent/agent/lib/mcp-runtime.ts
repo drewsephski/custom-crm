@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { db, type Prisma } from "@crm/db";
-import { WORKSPACE_ID } from "@crm/db/workspace";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { vendorAccess, vendorBySlug } from "@crm/mcp-integrations/catalog";
 import { parseAgentManifest } from "@crm/validation/agent-manifest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -156,7 +156,7 @@ export async function authorizeMcpTool(
 	const connection = await db.mcpConnection.findUnique({
 		where: {
 			organizationId_platformSlug: {
-				organizationId: WORKSPACE_ID,
+				organizationId: requireOrganizationId(),
 				platformSlug,
 			},
 		},

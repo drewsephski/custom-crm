@@ -1,5 +1,6 @@
 import { type auth } from "@crm/auth/auth";
 import { SESSION_COOKIE_NAME } from "@crm/auth/cookies";
+import { runInTenant } from "@crm/db/tenancy";
 import {
 	Controller,
 	Get,
@@ -43,10 +44,12 @@ export class ConversationAttachmentsController {
 		@Session() session: CrmSession,
 		@Res({ passthrough: true }) response: Response,
 	) {
-		const attachment = await this.conversations.attachment(
+		const organizationId = await this.conversations.attachmentOrganization(
 			id,
 			session.user.id,
-			shareToken,
+		);
+		const attachment = await runInTenant(organizationId, () =>
+			this.conversations.attachment(id, session.user.id, shareToken),
 		);
 		const content = Buffer.from(attachment.content);
 		const disposition = attachment.previewable ? "inline" : "attachment";

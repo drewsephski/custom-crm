@@ -1,22 +1,29 @@
 import { apiKey } from "@better-auth/api-key";
 import { sso } from "@better-auth/sso";
 import { db } from "@crm/db";
+import { runInTenant } from "@crm/db/tenancy";
 import { schemas } from "@crm/validation";
+import type { GenericEndpointContext } from "better-auth";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError } from "better-auth/api";
+import { APIError, getSessionFromCtx } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { organization } from "better-auth/plugins/organization";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
 import { env } from "./env";
-import { ensureWorkspaceMembership } from "./organization";
 import {
+	activeOrganizationForNewSession,
+	activeOrganizationOfSession,
+	membershipOf,
+	ORGANIZATION_PLUGIN_PATHS,
+} from "./organization";
+import {
+	CREDENTIAL_PROVIDER_ID,
 	GOOGLE_PROVIDER_ID,
+	IDENTITY_SCOPES,
 	MICROSOFT_PROVIDER_ID,
-	MICROSOFT_SYNC_SCOPES,
 	SLACK_PROVIDER_ID,
-	SYNC_SCOPES,
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import { slackConnectGuard } from "./slack-connect";
@@ -42,7 +49,7 @@ if (env.google) {
 	const google: NonNullable<typeof socialProviders.google> = {
 		...env.google,
 
-		scope: [...SYNC_SCOPES],
+		scope: [...IDENTITY_SCOPES],
 
 		accessType: "offline",
 	};
@@ -59,7 +66,7 @@ if (env.microsoft) {
 		clientSecret: env.microsoft.clientSecret,
 		tenantId: env.microsoft.tenantId,
 
-		scope: [...MICROSOFT_SYNC_SCOPES],
+		scope: [...IDENTITY_SCOPES],
 
 		prompt: "select_account",
 
@@ -80,8 +87,11 @@ export const auth = betterAuth({
 	}),
 
 	emailAndPassword: {
-		enabled: false,
+		enabled: env.emailPassword,
+		minPasswordLength: 12,
 	},
+
+	disabledPaths: [...ORGANIZATION_PLUGIN_PATHS],
 
 	socialProviders,
 
@@ -215,6 +225,7 @@ export const auth = betterAuth({
 			: []),
 		organization({
 			allowUserToCreateOrganization: false,
+			cancelPendingInvitationsOnReInvite: true,
 			disableOrganizationDeletion: true,
 			creatorRole: "owner",
 
@@ -252,6 +263,10 @@ export const auth = betterAuth({
 	databaseHooks: {
 		account: {
 			create: {
+				before: async (account) => {
+					await refuseUnverifiedPasswordLink(account);
+					return { data: account };
+				},
 				after: replaceSlackAccount,
 			},
 			update: {
@@ -262,14 +277,7 @@ export const auth = betterAuth({
 		user: {
 			create: {
 				before: async (user) => {
-					if (!hasSignInAllowList()) {
-						throw new APIError("FORBIDDEN", {
-							message:
-								'No one can sign in yet: set ALLOWED_SIGN_IN in .env to your email domain (for example ALLOWED_SIGN_IN="acme.com") and restart.',
-						});
-					}
-
-					if (!isWorkspaceEmail(user.email)) {
+					if (hasSignInAllowList() && !isWorkspaceEmail(user.email)) {
 						const domain = primaryWorkspaceDomain();
 						throw new APIError("FORBIDDEN", {
 							message: domain
@@ -286,11 +294,11 @@ export const auth = betterAuth({
 		session: {
 			create: {
 				before: async (session) => {
-					const workspaceId = await ensureWorkspaceMembership(session.userId);
+					const activeOrganizationId = await activeOrganizationForNewSession(
+						session.userId,
+					);
 
-					return {
-						data: { ...session, activeOrganizationId: workspaceId ?? null },
-					};
+					return { data: { ...session, activeOrganizationId } };
 				},
 
 				after: async (session) => {
@@ -310,12 +318,65 @@ export type Auth = typeof auth;
 export type Session = typeof auth.$Infer.Session;
 export type SessionUser = Session["user"];
 
-async function replaceSlackAccount(account: {
-	id: string;
-	accountId: string;
-	providerId: string;
-}): Promise<void> {
+async function replaceSlackAccount(
+	account: {
+		id: string;
+		accountId: string;
+		providerId: string;
+		userId: string;
+	},
+	context: GenericEndpointContext | null,
+): Promise<void> {
 	if (account.providerId !== SLACK_PROVIDER_ID) return;
-	await replaceSlackConnection(account);
-	await queueSlackInventorySync();
+
+	const session = context
+		? await getSessionFromCtx(context, { disableCookieCache: true })
+		: null;
+	const organizationId = session
+		? await activeOrganizationOfSession(session.session.id)
+		: null;
+	if (!organizationId || session?.user.id !== account.userId) {
+		throw new APIError("FORBIDDEN", {
+			message: "Open the workspace you want Slack in, then connect it again.",
+		});
+	}
+
+	const membership = await membershipOf(account.userId, organizationId);
+	if (!membership) {
+		throw new APIError("FORBIDDEN", {
+			message: "Only a member of this workspace can connect Slack.",
+		});
+	}
+
+	await runInTenant(organizationId, async () => {
+		await replaceSlackConnection(account);
+		await queueSlackInventorySync();
+	});
+}
+
+async function refuseUnverifiedPasswordLink(account: {
+	providerId: string;
+	userId: string;
+}): Promise<void> {
+	if (!env.emailPassword || account.providerId === CREDENTIAL_PROVIDER_ID) {
+		return;
+	}
+
+	const user = await db.user.findUnique({
+		where: { id: account.userId },
+		select: {
+			emailVerified: true,
+			accounts: {
+				where: { providerId: CREDENTIAL_PROVIDER_ID },
+				select: { id: true },
+			},
+		},
+	});
+
+	if (user && !user.emailVerified && user.accounts.length > 0) {
+		throw new APIError("FORBIDDEN", {
+			message:
+				"This address already has a password account that was never verified. Sign in with the password instead.",
+		});
+	}
 }

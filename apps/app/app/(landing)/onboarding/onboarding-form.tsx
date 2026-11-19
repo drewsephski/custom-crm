@@ -1,6 +1,6 @@
 "use client";
 
-import { workspaceSlug } from "@crm/db/workspace";
+import { workspaceSlug } from "@crm/db/workspace-slug";
 import { AuthButton } from "@crm/ui/components/auth-button";
 import {
 	AuthField,
@@ -17,14 +17,12 @@ import {
 } from "@crm/ui/components/auth-input-group";
 import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useMutation } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
 
 export function OnboardingForm({ placeholder }: { placeholder: string }) {
 	const trpc = useTRPC();
-	const router = useRouter();
 
 	const nameId = useId();
 	const slugId = useId();
@@ -35,9 +33,8 @@ export function OnboardingForm({ placeholder }: { placeholder: string }) {
 
 	const save = useMutation(
 		trpc.workspace.update.mutationOptions({
-			onSuccess: () => {
-				router.refresh();
-				router.replace("/onboarding/research");
+			onSuccess: (workspace) => {
+				window.location.assign(`/${workspace.slug}`);
 			},
 			onError: (error) => toast.error(error.message),
 		}),

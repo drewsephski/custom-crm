@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { changeWrite } from "../lib/approval";
 import { createField, updateFieldBrief } from "../lib/fields";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -48,36 +49,38 @@ export default defineTool({
 			.describe("False hands the field back to the rep entirely."),
 	}),
 	approval: changeWrite(),
-	async execute(input) {
-		if (input.action === "create") {
-			if (!input.label || !input.type) {
+	async execute(input, ctx) {
+		return inSessionTenant(ctx, async () => {
+			if (input.action === "create") {
+				if (!input.label || !input.type) {
+					return {
+						created: false,
+						reason: "Creating a field needs both a label and a type.",
+					};
+				}
+
+				return createField({
+					entity: input.entity,
+					label: input.label,
+					type: input.type,
+					options: input.options,
+					agentBrief: input.agentBrief,
+				});
+			}
+
+			if (!input.key) {
 				return {
-					created: false,
-					reason: "Creating a field needs both a label and a type.",
+					updated: false,
+					reason: "Changing a brief needs the field key.",
 				};
 			}
 
-			return createField({
+			return updateFieldBrief({
 				entity: input.entity,
-				label: input.label,
-				type: input.type,
-				options: input.options,
-				agentBrief: input.agentBrief,
+				key: input.key,
+				agentBrief: input.agentBrief ?? null,
+				agentFilled: input.agentFilled,
 			});
-		}
-
-		if (!input.key) {
-			return {
-				updated: false,
-				reason: "Changing a brief needs the field key.",
-			};
-		}
-
-		return updateFieldBrief({
-			entity: input.entity,
-			key: input.key,
-			agentBrief: input.agentBrief ?? null,
-			agentFilled: input.agentFilled,
 		});
 	},
 });

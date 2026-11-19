@@ -4,8 +4,10 @@ import {
 	ownsCompanyStatus,
 	ownsContactStatus,
 } from "@crm/db/agent-tasks";
+import { runInTenant } from "@crm/db/tenancy";
 import { DISPATCH } from "./dispatch-config";
 import { settle } from "./enrichment";
+import { organizationIds } from "./organizations";
 import { retireExhausted, type TaskSubject } from "./tasks";
 
 const SCAN = DISPATCH.reconcile.scan;
@@ -56,7 +58,9 @@ export async function retireAbandoned(): Promise<TaskSubject[]> {
 	}
 
 	for (const task of abandoned) {
-		await settle(task, EnrichmentStatus.FAILED, RETIRED_ERROR).catch(() => {});
+		await runInTenant(task.organizationId, () =>
+			settle(task, EnrichmentStatus.FAILED, RETIRED_ERROR),
+		).catch(() => {});
 	}
 
 	return abandoned;
@@ -74,7 +78,9 @@ export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
 	};
 
 	try {
-		await runSweep(sweep);
+		for (const organizationId of await organizationIds()) {
+			await runInTenant(organizationId, () => runSweep(sweep));
+		}
 	} catch (cause) {
 		sweep.error = cause instanceof Error ? cause.message : String(cause);
 		console.error(`[agent] Stale task reconciliation failed: ${sweep.error}`);

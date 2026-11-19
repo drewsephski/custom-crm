@@ -1,5 +1,6 @@
 import { EnrichmentStatus } from "@crm/db";
 import { DIRECT_KINDS } from "@crm/db/agent-tasks";
+import { runInTenant } from "@crm/db/tenancy";
 import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { APP_AUTH, type AppAuth } from "./app-auth";
 import { brandOutcome, runBrand } from "./brand";
@@ -14,6 +15,7 @@ import { runSlackChannelJoin } from "./slack-join-task";
 import { runSlackPeopleMatch } from "./slack-people";
 import { staleTaskSweep } from "./stale-tasks";
 import { claimDue, completeTask, type LeasedTask, noteSession } from "./tasks";
+import { ORGANIZATION_ATTRIBUTE } from "./tenant-scope";
 
 export const VISIBLE_BATCH = DISPATCH.visible.batch;
 export const VISIBLE_CONCURRENCY = DISPATCH.visible.concurrency;
@@ -36,7 +38,12 @@ export async function runVisibleLane(signal?: AbortSignal): Promise<number> {
 
 		if (tasks.length === 0) break;
 
-		await runLimited(VISIBLE_CONCURRENCY, tasks, runDirect, signal);
+		await runLimited(
+			VISIBLE_CONCURRENCY,
+			tasks,
+			(task) => runInTenant(task.organizationId, () => runDirect(task)),
+			signal,
+		);
 		handled += tasks.length;
 	}
 
@@ -151,7 +158,7 @@ export async function runResearchLane(
 		tasks.map(async (task) => {
 			if (signal?.aborted) return;
 			started += 1;
-			await beginResearch(task, start);
+			await runInTenant(task.organizationId, () => beginResearch(task, start));
 		}),
 	);
 
@@ -253,6 +260,7 @@ export function taskAuth(task: LeasedTask, base: AppAuth = APP_AUTH): AppAuth {
 	return {
 		...base,
 		attributes: {
+			[ORGANIZATION_ATTRIBUTE]: task.organizationId,
 			taskKind: task.kind,
 			reason: task.reason,
 			budget: String(task.budget),

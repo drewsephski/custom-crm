@@ -12,6 +12,7 @@ import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { InviteMembers } from "./invite-members";
 import { membersSearchParams } from "./members-search-params";
 import { MembersTable } from "./members-table";
 
@@ -28,7 +29,7 @@ export default function MembersSettingsPage({
 				<PageShellHeading>
 					<PageShellTitle>Members</PageShellTitle>
 					<PageShellDescription>
-						Everyone who has access to your CRM.
+						Everyone who has access to this workspace.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>
@@ -61,7 +62,10 @@ async function Members({
 
 	return (
 		<HydrateClient>
-			<MembersTable />
+			<div className="flex flex-col gap-6">
+				<InviteMembers />
+				<MembersTable />
+			</div>
 		</HydrateClient>
 	);
 }

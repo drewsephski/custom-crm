@@ -5,6 +5,7 @@ import {
 	writeBuilderArtifact,
 } from "../../../lib/builder-runtime";
 import { requireBuilderAttribute } from "../../../lib/session-purpose";
+import { inSessionTenant } from "../../../lib/tenant-scope";
 import { assertBuilderDraftOpen } from "../lib/execution-state";
 
 export default defineTool({
@@ -15,12 +16,14 @@ export default defineTool({
 		content: z.string().min(1).max(40_000),
 	}),
 	async execute(input, ctx) {
-		assertBuilderDraftOpen();
-		return writeBuilderArtifact(
-			requireBuilderAttribute(ctx, "conversationId"),
-			requireBuilderAttribute(ctx, "userId"),
-			input.path,
-			input.content,
-		);
+		return inSessionTenant(ctx, async () => {
+			assertBuilderDraftOpen();
+			return writeBuilderArtifact(
+				requireBuilderAttribute(ctx, "conversationId"),
+				requireBuilderAttribute(ctx, "userId"),
+				input.path,
+				input.content,
+			);
+		});
 	},
 });

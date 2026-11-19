@@ -10,6 +10,7 @@ import {
 	readReportingCurrency,
 	writeRatesRefreshedAt,
 } from "@crm/db/settings";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { Injectable, Logger } from "@nestjs/common";
 import { z } from "zod";
 import { InjectDatabase } from "../database/database.constants";
@@ -116,7 +117,8 @@ export class RatesService {
 		for (const [quoteCurrency, rate] of rates) {
 			await this.db.exchangeRate.upsert({
 				where: {
-					baseCurrency_quoteCurrency_source: {
+					organizationId_baseCurrency_quoteCurrency_source: {
+						organizationId: requireOrganizationId(),
 						baseCurrency: base,
 						quoteCurrency,
 						source: RateSource.FETCHED,

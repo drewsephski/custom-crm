@@ -7,6 +7,7 @@ import {
 	it,
 } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import {
 	CONTACT_CAP_REASON,
 	CONTACTS_PER_HOUR,
@@ -89,19 +90,25 @@ async function clean() {
 beforeAll(async () => {
 	await clean();
 
-	const user = await db.user.findFirst({ select: { id: true } });
-	userId =
-		user?.id ??
-		(
-			await db.user.create({
-				data: {
-					id: `user-${suffix}`,
-					name: "Test Rep",
-					email: `rep-${suffix}@example.test`,
-				},
-				select: { id: true },
-			})
-		).id;
+	userId = (
+		await db.user.create({
+			data: {
+				id: `user-${suffix}`,
+				name: "Test Rep",
+				email: `rep-${suffix}@example.test`,
+			},
+			select: { id: true },
+		})
+	).id;
+	await db.member.create({
+		data: {
+			id: `member-${suffix}`,
+			organizationId: TEST_ORGANIZATION.id,
+			userId,
+			role: "owner",
+			createdAt: new Date(),
+		},
+	});
 });
 
 beforeEach(async () => {
@@ -111,9 +118,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
 	await clean();
-	if (userId.startsWith(`user-${suffix}`)) {
-		await db.user.deleteMany({ where: { id: userId } });
-	}
+	await db.user.deleteMany({ where: { id: userId } });
 });
 
 describe("filing a form submission", () => {
@@ -159,7 +164,7 @@ describe("filing a form submission", () => {
 		expect(outcome.filed).toBe(true);
 		expect(stored?.filedAt).not.toBeNull();
 
-		const contact = await db.contact.findUnique({
+		const contact = await db.contact.findFirst({
 			where: { email: `free-${suffix}@gmail.com` },
 			select: { companyId: true, source: true },
 		});
@@ -176,7 +181,7 @@ describe("filing a form submission", () => {
 		expect(stored?.contactId).toBeTruthy();
 		expect(queued).toHaveLength(1);
 
-		const contact = await db.contact.findUnique({
+		const contact = await db.contact.findFirst({
 			where: { email },
 			select: { companyId: true, firstName: true },
 		});

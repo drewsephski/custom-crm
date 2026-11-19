@@ -1,10 +1,10 @@
-import { WORKSPACE_ID } from "@crm/auth/organization";
 import {
 	AgentConversationPermissionMode,
 	type Db,
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
+import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import { type InputRequest, schemas } from "@crm/validation";
 import { readAgentManifestSummary } from "@crm/validation/agent-manifest";
 import {
@@ -929,6 +929,34 @@ export class ConversationsService {
 		return { id };
 	}
 
+	async attachmentOrganization(id: string, userId: string): Promise<string> {
+		const row = await runAsSystem("find the workspace of an attachment", () =>
+			this.db.agentConversationAttachment.findUnique({
+				where: { id },
+				select: { organizationId: true },
+			}),
+		);
+		const member = row
+			? await runAsSystem("check the reader belongs to that workspace", () =>
+					this.db.member.findUnique({
+						where: {
+							organizationId_userId: {
+								organizationId: row.organizationId,
+								userId,
+							},
+						},
+						select: { id: true },
+					}),
+				)
+			: null;
+
+		if (!row || !member) {
+			throw new NotFoundException("That attachment does not exist.");
+		}
+
+		return row.organizationId;
+	}
+
 	async attachment(
 		id: string,
 		userId: string,
@@ -1331,7 +1359,10 @@ export class ConversationsService {
 	private async assertWorkspaceMember(userId: string): Promise<void> {
 		const member = await this.db.member.findUnique({
 			where: {
-				organizationId_userId: { organizationId: WORKSPACE_ID, userId },
+				organizationId_userId: {
+					organizationId: requireOrganizationId(),
+					userId,
+				},
 			},
 			select: { id: true },
 		});

@@ -1,3 +1,4 @@
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	BadRequestException,
 	Injectable,
@@ -37,6 +38,7 @@ export class SlackChannelsService {
 					type: "slack.channel.create",
 					channelName: name,
 					isPrivate,
+					organizationId: requireOrganizationId(),
 				}),
 				signal: AbortSignal.timeout(CREATE_TIMEOUT_MS),
 			});

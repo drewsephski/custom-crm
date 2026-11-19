@@ -1,6 +1,7 @@
 import { isMicrosoftConfigured } from "@crm/auth/env";
 import { MICROSOFT_PROVIDER_ID, signsInWithMicrosoft } from "@crm/auth/scopes";
 import type { Db, Prisma } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ActivityStampService } from "../crm/activity-stamp.service";
 import { InjectDatabase } from "../database/database.constants";
@@ -102,6 +103,9 @@ export class MicrosoftConnectionService {
 		const accounts = await this.db.account.findMany({
 			where: {
 				providerId: MICROSOFT_PROVIDER_ID,
+				user: {
+					mailboxSyncs: { some: { organizationId: requireOrganizationId() } },
+				},
 				OR: MICROSOFT_SYNC_SOURCES.map((source) => ({
 					scope: { contains: SCOPE_FOR_SOURCE[source] },
 				})),

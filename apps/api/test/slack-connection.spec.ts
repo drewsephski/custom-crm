@@ -17,11 +17,11 @@ function serviceFor(input: {
 			id: string;
 			name: string;
 			email: string;
-			slackMemberMatch: {
+			slackMemberMatches: Array<{
 				slackUserId: string | null;
 				slackHandle: string | null;
 				slackEmail: string | null;
-			} | null;
+			}>;
 		};
 	}>;
 	memberCount?: number;
@@ -167,11 +167,13 @@ describe("Slack connection", () => {
 						id: "crm-1",
 						name: "Grim",
 						email: "grim@example.test",
-						slackMemberMatch: {
-							slackUserId: "U1",
-							slackHandle: "@grim",
-							slackEmail: "grim@example.test",
-						},
+						slackMemberMatches: [
+							{
+								slackUserId: "U1",
+								slackHandle: "@grim",
+								slackEmail: "grim@example.test",
+							},
+						],
 					},
 				},
 			],

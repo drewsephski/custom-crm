@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { isGoogleConfigured } from "@crm/auth/env";
-import { WORKSPACE_ID } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import { ForbiddenException } from "@nestjs/common";
 import { SsoService } from "../src/sso/sso.service";
 
@@ -29,6 +29,9 @@ function service(role: string | null, rows: Row[] = []) {
 	const db = {
 		member: {
 			findUnique: async () => (role === null ? null : { role }),
+		},
+		organization: {
+			findMany: async () => [{ id: TEST_ORGANIZATION.id }],
 		},
 		ssoProvider: {
 			findMany: async ({ where }: { where: unknown }) => {
@@ -110,7 +113,9 @@ describe("what a provider looks like once it is saved", () => {
 		const { sso, seen } = service("owner", [OKTA]);
 		await sso.list(LIST);
 
-		expect(seen.providerWhere).toEqual({ organizationId: WORKSPACE_ID });
+		expect(seen.providerWhere).toEqual({
+			organizationId: TEST_ORGANIZATION.id,
+		});
 	});
 
 	it("searches the name, the domain and the issuer", async () => {
@@ -118,7 +123,7 @@ describe("what a provider looks like once it is saved", () => {
 		await sso.list({ ...LIST, q: " acme " });
 
 		expect(seen.providerWhere).toEqual({
-			organizationId: WORKSPACE_ID,
+			organizationId: TEST_ORGANIZATION.id,
 			OR: [
 				{ providerId: { contains: "acme", mode: "insensitive" } },
 				{ domain: { contains: "acme", mode: "insensitive" } },

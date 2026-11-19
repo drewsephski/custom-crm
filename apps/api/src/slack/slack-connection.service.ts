@@ -1,7 +1,8 @@
 import { isSlackConfigured } from "@crm/auth/env";
-import { canManageConnections, WORKSPACE_ID } from "@crm/auth/organization";
+import { canManageConnections } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
 import { SLACK_INVENTORY } from "@crm/db/slack-inventory";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { schemas } from "@crm/validation";
 import {
 	BadRequestException,
@@ -43,7 +44,13 @@ export class SlackConnectionService {
 		const role = await this.access.assertMember(userId);
 		const [account, agents, matches, memberCount, grant] = await Promise.all([
 			this.db.account.findFirst({
-				where: { providerId: "slack", accessToken: { not: null } },
+				where: {
+					providerId: "slack",
+					user: {
+						members: { some: { organizationId: requireOrganizationId() } },
+					},
+					accessToken: { not: null },
+				},
 				orderBy: { updatedAt: "desc" },
 				select: { accountId: true, updatedAt: true, scope: true },
 			}),
@@ -64,12 +71,11 @@ export class SlackConnectionService {
 				select: { id: true, name: true, description: true, status: true },
 			}),
 			this.db.slackMemberMatch.findMany({
-				where: {
-					crmUser: { members: { some: { organizationId: WORKSPACE_ID } } },
-				},
 				select: { slackUserId: true, updatedAt: true },
 			}),
-			this.db.member.count({ where: { organizationId: WORKSPACE_ID } }),
+			this.db.member.count({
+				where: { organizationId: requireOrganizationId() },
+			}),
 			this.db.slackWorkspaceGrant.findFirst({
 				select: { id: true, teamName: true },
 			}),
@@ -107,7 +113,7 @@ export class SlackConnectionService {
 		await this.access.assertMember(userId);
 		const [members, syncing] = await Promise.all([
 			this.db.member.findMany({
-				where: { organizationId: WORKSPACE_ID },
+				where: { organizationId: requireOrganizationId() },
 				orderBy: { user: { name: "asc" } },
 				select: {
 					user: {
@@ -115,7 +121,9 @@ export class SlackConnectionService {
 							id: true,
 							name: true,
 							email: true,
-							slackMemberMatch: {
+							slackMemberMatches: {
+								where: { organizationId: requireOrganizationId() },
+								take: 1,
 								select: {
 									slackUserId: true,
 									slackHandle: true,
@@ -134,7 +142,7 @@ export class SlackConnectionService {
 				crmUserId: user.id,
 				name: user.name,
 				email: user.email,
-				match: user.slackMemberMatch,
+				match: user.slackMemberMatches[0] ?? null,
 			})),
 			sync: syncing,
 		};
@@ -162,7 +170,13 @@ export class SlackConnectionService {
 	async refreshPeople(userId: string): Promise<SlackRefreshPeopleResult> {
 		await this.access.assertMember(userId);
 		const account = await this.db.account.findFirst({
-			where: { providerId: "slack", accessToken: { not: null } },
+			where: {
+				providerId: "slack",
+				user: {
+					members: { some: { organizationId: requireOrganizationId() } },
+				},
+				accessToken: { not: null },
+			},
 			orderBy: { updatedAt: "desc" },
 			select: { id: true },
 		});
@@ -193,7 +207,14 @@ export class SlackConnectionService {
 				where,
 				orderBy: [{ isMember: "desc" }, { name: "asc" }, { id: "asc" }],
 				take: take + 1,
-				cursor: input.cursor ? { id: input.cursor } : undefined,
+				cursor: input.cursor
+					? {
+							organizationId_id: {
+								organizationId: requireOrganizationId(),
+								id: input.cursor,
+							},
+						}
+					: undefined,
 				skip: input.cursor ? 1 : undefined,
 				select: {
 					id: true,
@@ -214,7 +235,13 @@ export class SlackConnectionService {
 		const [account, lastFill] = emptyInventory
 			? await Promise.all([
 					this.db.account.findFirst({
-						where: { providerId: "slack", accessToken: { not: null } },
+						where: {
+							providerId: "slack",
+							user: {
+								members: { some: { organizationId: requireOrganizationId() } },
+							},
+							accessToken: { not: null },
+						},
 						orderBy: { updatedAt: "desc" },
 						select: { updatedAt: true },
 					}),
@@ -259,7 +286,12 @@ export class SlackConnectionService {
 	): Promise<SlackJoinChannelResult> {
 		await this.access.assertMember(userId);
 		const channel = await this.db.slackChannel.findUnique({
-			where: { id: input.channelId },
+			where: {
+				organizationId_id: {
+					organizationId: requireOrganizationId(),
+					id: input.channelId,
+				},
+			},
 			select: { id: true, name: true, isMember: true, isPrivate: true },
 		});
 		if (!channel) throw new NotFoundException("No such Slack channel.");
@@ -270,7 +302,12 @@ export class SlackConnectionService {
 		});
 		if (channel.isPrivate && !grant) {
 			await this.db.slackChannel.update({
-				where: { id: channel.id },
+				where: {
+					organizationId_id: {
+						organizationId: requireOrganizationId(),
+						id: channel.id,
+					},
+				},
 				data: { inviteRequestedAt: new Date() },
 			});
 			return { queued: false, alreadyJoined: false };

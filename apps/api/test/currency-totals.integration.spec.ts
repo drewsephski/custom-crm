@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { DealStage, db, RateSource } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
-import { SETTINGS_ID, writeReportingCurrency } from "@crm/db/settings";
+import { settingsKey, writeReportingCurrency } from "@crm/db/settings";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -49,7 +50,8 @@ const HALF_MILLION = 50_000_000;
 async function rate(quote: string, value: string, source: RateSource) {
 	await db.exchangeRate.upsert({
 		where: {
-			baseCurrency_quoteCurrency_source: {
+			organizationId_baseCurrency_quoteCurrency_source: {
+				organizationId: TEST_ORGANIZATION.id,
 				baseCurrency: "USD",
 				quoteCurrency: quote,
 				source,
@@ -82,7 +84,7 @@ async function pipelineCents(): Promise<number> {
 
 beforeAll(async () => {
 	const existing = await db.appSetting.findUnique({
-		where: { id: SETTINGS_ID },
+		where: settingsKey(),
 		select: { reportingCurrency: true },
 	});
 	previousReportingCurrency = existing?.reportingCurrency ?? null;
@@ -101,10 +103,8 @@ beforeAll(async () => {
 		update: {},
 	});
 
-	const company = await db.company.upsert({
-		where: { domain },
-		create: { name: `Money Co ${suffix}`, domain },
-		update: {},
+	const company = await db.company.create({
+		data: { name: `Money Co ${suffix}`, domain },
 		select: { id: true },
 	});
 	companyId = company.id;

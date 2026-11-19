@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { listFields } from "../lib/fields";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -10,22 +11,24 @@ export default defineTool({
 			.enum(["COMPANY", "CONTACT", "DEAL"])
 			.describe("Which record type the fields belong to."),
 	}),
-	async execute({ entity }) {
-		const fields = await listFields(entity);
+	async execute({ entity }, ctx) {
+		return inSessionTenant(ctx, async () => {
+			const fields = await listFields(entity);
 
-		return {
-			fields: fields.map((field) => ({
-				key: field.key,
-				label: field.label,
-				type: field.type,
-				agentFilled: field.agentFilled,
-				brief: field.agentBrief,
-				options: field.options.map((option) => option.label),
-			})),
-			note:
-				fields.length === 0
-					? "This workspace has no custom fields on this record type yet."
-					: "Fields marked agentFilled false are the rep's to keep — do not write to them.",
-		};
+			return {
+				fields: fields.map((field) => ({
+					key: field.key,
+					label: field.label,
+					type: field.type,
+					agentFilled: field.agentFilled,
+					brief: field.agentBrief,
+					options: field.options.map((option) => option.label),
+				})),
+				note:
+					fields.length === 0
+						? "This workspace has no custom fields on this record type yet."
+						: "Fields marked agentFilled false are the rep's to keep — do not write to them.",
+			};
+		});
 	},
 });

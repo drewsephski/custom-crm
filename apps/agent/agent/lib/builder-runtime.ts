@@ -5,8 +5,8 @@ import {
 	CRM_EVENT_TYPES,
 	type CrmEventType,
 } from "@crm/db/crm-events";
-import { readAgentModel } from "@crm/db/settings";
-import { WORKSPACE_ID } from "@crm/db/workspace";
+import { configuredAgentModel } from "@crm/db/settings";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	AGENT_ACTION_TYPES,
 	type AgentManifestMcpGrant,
@@ -231,7 +231,7 @@ export async function saveBuilderDraft(
 		};
 	}
 
-	const model = await readAgentModel(db);
+	const model = configuredAgentModel();
 	const now = new Date();
 	const manifestTriggers = input.triggers.map((trigger) => ({
 		type: trigger.type,
@@ -680,14 +680,16 @@ async function connectionStatus(userId: string) {
 				select: { id: true },
 			}),
 			db.member.findMany({
-				where: { organizationId: WORKSPACE_ID },
+				where: { organizationId: requireOrganizationId() },
 				orderBy: { user: { name: "asc" } },
 				select: {
 					user: {
 						select: {
 							name: true,
 							email: true,
-							slackMemberMatch: {
+							slackMemberMatches: {
+								where: { organizationId: requireOrganizationId() },
+								take: 1,
 								select: {
 									slackUserId: true,
 									slackHandle: true,
@@ -699,7 +701,7 @@ async function connectionStatus(userId: string) {
 				},
 			}),
 			db.mcpConnection.findMany({
-				where: { organizationId: WORKSPACE_ID, status: "CONNECTED" },
+				where: { organizationId: requireOrganizationId(), status: "CONNECTED" },
 				select: {
 					platformSlug: true,
 					accessMode: true,
@@ -728,7 +730,7 @@ async function connectionStatus(userId: string) {
 		googleAccounts.flatMap((account) => (account.scope ?? "").split(/[,\s]+/)),
 	);
 	const slackPeople = workspaceMembers.flatMap(({ user }) => {
-		const match = user.slackMemberMatch;
+		const match = user.slackMemberMatches[0];
 		return match?.slackUserId && match.slackHandle
 			? [
 					{

@@ -29,8 +29,8 @@ metadata. The root file's comment has the whole account.
 
 ## Required
 
-`DATABASE_URL`, `BETTER_AUTH_SECRET`, `ALLOWED_SIGN_IN`. Everything else has a
-localhost default or is genuinely optional.
+`DATABASE_URL`, `BETTER_AUTH_SECRET`. Everything else has a localhost default or is
+genuinely optional.
 
 **`GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`** are the sign-in button *and* the
 Gmail/Calendar sync — optional, so an SSO-only install needn't create a Google project,
@@ -46,11 +46,23 @@ Microsoft equivalent of `hd`**: `tenantId` is the whole of it.
 **Neither pair is required, but an install wants one of them or an SSO provider** —
 with none, the sign-in page says so by name rather than rendering nothing.
 
-**`ALLOWED_SIGN_IN`** — comma-separated whole domains or single addresses (bare
-addresses exist for a solo self-hoster, where `gmail.com` would be an open door). **One
-list, read by the sign-in guard *and* the sync's "which side is external" decision** —
-if they drifted a colleague would be refused at the door or filed as a lead. **An empty
-list fails closed.** Parsed on demand. `packages/auth/src/workspace.ts`.
+**`ALLOWED_SIGN_IN`** — optional. Empty means self-service sign-up: anyone may
+register, and workspace membership decides what they see (`docs/tenancy.md`). Set it
+to restrict an install to whole domains or single addresses. It is also read by the
+sync's "which side is external" decision, together with the `User` table.
+`packages/auth/src/workspace.ts`.
+
+**`ANTHROPIC_API_KEY`** — optional, server-side only. The agent and the AI setup
+proposal call Anthropic directly; there is no gateway. **`ANTHROPIC_MODEL`**
+(default `claude-haiku-5-5`) and **`ANTHROPIC_COMPLEX_MODEL`** (default
+`claude-opus-5-5`, used by the agent builder) are native Anthropic ids, read through
+`packages/db/src/ai-models.ts`. Without a key, every AI feature reports itself off and
+the CRM still works.
+
+**`AUTH_EMAIL_PASSWORD`** — `"true"` enables email-and-password accounts, for local
+development without a Google client. No email verification exists, so such accounts
+cannot accept invitations and are never linked to a social sign-in. Off in
+production.
 
 ## Where things are
 
@@ -122,7 +134,7 @@ single place that knows what is set.
 | `PERPLEXITY_API_KEY` | Open-web research with citations; finds a LinkedIn slug |
 | `GITHUB_TOKEN` | Raises the GitHub rate limit from 60/hour |
 | `BLOB_READ_WRITE_TOKEN` | Mirrors logos and photos into Blob |
-| `AI_GATEWAY_API_KEY` | The model. Not needed on Vercel (OIDC) |
+| `ANTHROPIC_API_KEY` | The model, called directly. Optional |
 | `AGENT_BRIDGE_SECRET` | The rep-facing Agent panel — see `agent.md` |
 
 `BLOB_READ_WRITE_TOKEN` is also in `env.validation.ts` and `apps/api/turbo.json`

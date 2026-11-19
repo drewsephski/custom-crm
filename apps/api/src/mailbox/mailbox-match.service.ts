@@ -216,8 +216,8 @@ export class MailboxMatchService {
 
 		const outcome = await this.agent.withCrmEvents(async (tx, emit) => {
 			await lockIdempotencyKey(tx, `mailbox-contact:${person.email}`);
-			const existing = await tx.contact.findUnique({
-				where: { email: person.email },
+			const existing = await tx.contact.findFirst({
+				where: { email: person.email, archivedAt: null },
 				select: {
 					id: true,
 					firstName: true,

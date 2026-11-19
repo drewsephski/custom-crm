@@ -11,7 +11,7 @@ import {
 } from "@crm/ui/components/app-sidebar";
 import { DropdownMenuItem } from "@crm/ui/components/dropdown-menu";
 import { WorkspaceSwitcher } from "@crm/ui/components/workspace-switcher";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
 	Building2Icon,
 	HandshakeIcon,
@@ -19,6 +19,7 @@ import {
 	ListChecksIcon,
 	type LucideIcon,
 	MessagesSquareIcon,
+	PlusIcon,
 	SettingsIcon,
 	UserPlusIcon,
 	UsersIcon,
@@ -47,6 +48,7 @@ type WorkspaceData = {
 	viewerRole: "owner" | "member" | "admin" | null;
 	canRename: boolean;
 	canChangeRoles: boolean;
+	canInvite: boolean;
 };
 
 const PRIMARY: NavItem[] = [
@@ -116,6 +118,8 @@ function WorkspaceHeader({
 		...trpc.workspace.get.queryOptions(),
 		initialData: initialWorkspace,
 	});
+	const memberships = useQuery(trpc.workspaces.list.queryOptions());
+	const activate = useMutation(trpc.workspaces.activate.mutationOptions());
 
 	if (!workspace.data) {
 		return (
@@ -124,24 +128,50 @@ function WorkspaceHeader({
 	}
 
 	const { id, slug, name } = workspace.data;
+	const current = { id, slug, name: name.trim() || "Workspace", logo: null };
+	const available = memberships.data?.workspaces.map((entry) => ({
+		id: entry.id,
+		slug: entry.slug,
+		name: entry.name.trim() || "Workspace",
+		logo: null,
+	})) ?? [current];
 
 	return (
 		<WorkspaceSwitcher
-			workspaces={[{ id, slug, name: name.trim() || "Workspace", logo: null }]}
+			workspaces={
+				available.some((entry) => entry.slug === slug)
+					? available
+					: [current, ...available]
+			}
 			activeSlug={slug}
-			onSwitch={() => {
+			onSwitch={(next) => {
 				nav.close();
-				router.push(workspaceUrl());
+				if (next === slug) {
+					router.push(workspaceUrl());
+					return;
+				}
+				activate.mutate(
+					{ slug: next },
+					{ onSettled: () => window.location.assign(`/${next}`) },
+				);
 			}}
-			label="Workspace"
-			actions={WORKSPACE_ACTIONS.map((action) => (
-				<DropdownMenuItem key={action.href} asChild onSelect={nav.close}>
-					<Link href={workspaceUrl(action.href)}>
-						<action.icon aria-hidden />
-						{action.title}
+			label="Workspaces"
+			actions={[
+				...WORKSPACE_ACTIONS.map((action) => (
+					<DropdownMenuItem key={action.href} asChild onSelect={nav.close}>
+						<Link href={workspaceUrl(action.href)}>
+							<action.icon aria-hidden />
+							{action.title}
+						</Link>
+					</DropdownMenuItem>
+				)),
+				<DropdownMenuItem key="create-workspace" asChild onSelect={nav.close}>
+					<Link href="/onboarding?new=1">
+						<PlusIcon aria-hidden />
+						Create workspace
 					</Link>
-				</DropdownMenuItem>
-			))}
+				</DropdownMenuItem>,
+			]}
 		/>
 	);
 }

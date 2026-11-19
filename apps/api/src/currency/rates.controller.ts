@@ -1,3 +1,4 @@
+import type { Db } from "@crm/db";
 import {
 	Controller,
 	ForbiddenException,
@@ -19,6 +20,8 @@ import {
 } from "@nestjs/swagger";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 import type { EnvironmentVariables } from "../config/env.validation";
+import { InjectDatabase } from "../database/database.constants";
+import { forEachOrganization } from "../tenancy/for-each-organization";
 import { ConversionService } from "./conversion.service";
 import { RatesService } from "./rates.service";
 
@@ -36,6 +39,7 @@ export class RatesController {
 	private readonly secret: string | undefined;
 
 	constructor(
+		@InjectDatabase() private readonly db: Db,
 		private readonly rates: RatesService,
 		private readonly conversion: ConversionService,
 		config: ConfigService<EnvironmentVariables, true>,
@@ -72,13 +76,32 @@ export class RatesController {
 			throw new ForbiddenException();
 		}
 
-		const refresh = await this.rates.refresh();
+		const outcomes = await forEachOrganization(
+			this.db,
+			this.logger,
+			"Exchange-rate refresh",
+			async () => {
+				const refresh = await this.rates.refresh();
+				if (!refresh.ok) return { ...refresh, converted: 0, missing: 0 };
 
-		if (!refresh.ok) return refresh;
+				const filled = await this.conversion.fillMissing();
+				return {
+					...refresh,
+					converted: filled.converted,
+					missing: filled.missing,
+				};
+			},
+		);
 
-		const filled = await this.conversion.fillMissing();
-
-		return { ...refresh, converted: filled.converted, missing: filled.missing };
+		return {
+			workspaces: outcomes.length,
+			refreshed: outcomes.filter((outcome) => outcome.ok && outcome.value.ok)
+				.length,
+			converted: outcomes.reduce(
+				(sum, outcome) => sum + (outcome.ok ? outcome.value.converted : 0),
+				0,
+			),
+		};
 	}
 }
 

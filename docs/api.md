@@ -31,39 +31,27 @@ so the row survives the agent being down.
 About to add a vendor client to `apps/api`? You want `apps/agent/agent/lib`. One
 documented exception, for timing: the exchange-rate fetcher, below.
 
-## One organization, and it is not a tenancy boundary
+## Organizations are the tenancy boundary
 
-Single tenant. No org header, no org interceptor, no org-scoped cache keys, **no
-`organizationId` on any CRM record.**
+Multi-tenant. Every CRM row carries `organizationId`, and Postgres row-level
+security enforces it. **`docs/tenancy.md` is the whole account** — scopes, the
+`x-crm-workspace` header, exceptions, roles, migration. The rules that bite in the
+API:
 
-A **singleton workspace** exists — Better Auth's `organization` plugin, one row with
-id `WORKSPACE_ID` (the literal `workspace`, in `@crm/db`, re-exported by `@crm/auth`
-so the agent needn't depend on it). It answers only: what are we called, who works
-here, what do we sell.
-
-- **The id is a constant, never a parameter.** A function taking an `organizationId`
-  has turned the plugin into tenancy plumbing.
-- **Signing in is the join; no invite flow.** `ensureWorkspaceMembership` runs in
-  `databaseHooks.session.create.before` and **degrades, never throws** — a throw fails
-  the session create and locks everyone out. The plugin's `invitation` table is unused.
-- **First account is owner**, and the hook enrols pre-existing users, oldest first.
-- **Permissions come from `@crm/auth`** — `canRenameWorkspace`, `canChangeRole`,
-  `canConfigureSso`, `canManageCurrency` — enforced by the service *and* used to
-  disable the UI control, so the button and the 403 cannot disagree.
-  `WorkspaceService` adds one invariant: **the last owner cannot be demoted**, with
-  `FOR UPDATE` on the owner rows before counting.
-- **Reads and writes go through tRPC**, not `authClient.organization.*`.
-- **Name and website are required at onboarding and cannot be skipped**, in the form
-  *and* in `updateWorkspaceInput`, posting the same `workspace.update` as settings.
-- **Onboarded state is `onboardedAt` inside the plugin's `metadata` blob**, not a
-  column; `isOnboarded`/`markOnboarded` (`@crm/db/workspace`) are the only accessors,
-  and `markOnboarded` preserves every other key.
-- **The name starts as `DEFAULT_WORKSPACE_NAME` (`CRM`), a placeholder not an
-  answer.** The header renders `<name> CRM`, so `workspaceLabel` tests the name rather
-  than comparing to the default.
-- **The website queues the agent's `workspace-profile` task** and goes through
-  `normalizeDomain`, rejecting null. Stored canonical, so re-saving uncanonically
-  counts as a change and re-queues research.
+- **Never filter by organization to stay safe, and never take an `organizationId`
+  from input.** `AuthMiddleware` resolves the workspace from the caller's own
+  memberships and runs the procedure inside it. Services read it with
+  `requireOrganizationId()` when a compound key needs it.
+- **Code outside a tRPC procedure has no tenant.** A controller, cron, timer or
+  sign-in hook enters one explicitly: `runInTenant` for one organization,
+  `forEachOrganization` for a sweep, `runAsSystem(reason, …)` for install-wide
+  maintenance. Without one, queries return nothing and inserts fail.
+- **Membership, invitations and roles go through `WorkspaceService`.** Better Auth's
+  organization endpoints are disabled. `canGrantRole`, `canChangeRoleOf`,
+  `canRemoveMember` (`@crm/auth/organization`) decide, and **the last owner cannot be
+  demoted or removed**, with `FOR UPDATE` on the owner rows before counting.
+- **A new account joins no workspace.** It creates one (`workspaces.create`, creator
+  becomes owner) or accepts an invitation (`workspaces.acceptInvitation`).
 
 ### Gates in `proxy.ts`
 
@@ -77,10 +65,11 @@ request.
 - **Both reads run concurrently**, but order decides which is *asked* — the research
   read is never made while onboarding is open.
 - **An unreachable API fails open** (`unknown` lets the request through).
-- **`/sign-in`, `/grant-access`, `/eve` are ungated.** `/sign-in` is the only path a
+- **`/sign-in`, `/grant-access`, `/eve`, `/invitations` are ungated.** `/sign-in` is the only path a
   stranger may read; `/` joins it only when `IS_MARKETING` is set.
-- **There is no way past the key gate but to answer** — Skip stranded installs, every
-  later company sitting `PENDING` with nothing saying so.
+- **There is no research-key gate.** Website research is optional; the Context key is
+  set on `/onboarding/research` or in Settings, and without it companies stay
+  `PENDING` and the research page says why.
 
 ### The name is also the URL
 
@@ -106,7 +95,9 @@ self-hoster's admin cannot redeploy.
 
 - **OpenID Connect only** — issuer, client id, secret; endpoints from discovery. No
   SAML UI: it needs an X.509 cert and SP signing key we have nowhere to keep.
-- `SsoService` passes `WORKSPACE_ID`, never an input.
+- `SsoService` scopes to the request's workspace, never an input. The public sign-in
+  page lists providers only on an install with exactly one workspace — on a
+  multi-tenant install it would name other agencies' identity providers.
 - **Management is tRPC (`sso.*`); signing in is `authClient.signIn.sso()`.**
 - **`sso.signInOptions` is the one public procedure in the app.** Every other `sso.*`
   takes `AuthMiddleware` at the *method*, which is what leaves it open. A client

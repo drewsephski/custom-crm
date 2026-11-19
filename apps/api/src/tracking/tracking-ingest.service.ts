@@ -1,5 +1,6 @@
 import type { Db } from "@crm/db";
 import { classifyTouch, type RawTouch, type Touch } from "@crm/db/attribution";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	dedupeKey,
 	EVENTS_PER_MINUTE,
@@ -220,7 +221,12 @@ export class TrackingIngestService {
 		});
 
 		const submission = await this.db.formSubmission.findUnique({
-			where: { dedupeKey: key },
+			where: {
+				organizationId_dedupeKey: {
+					organizationId: requireOrganizationId(),
+					dedupeKey: key,
+				},
+			},
 			select: { id: true, filedAt: true, skipReason: true },
 		});
 

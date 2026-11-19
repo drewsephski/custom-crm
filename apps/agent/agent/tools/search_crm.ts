@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { searchCrm } from "../lib/lookup";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -18,17 +19,19 @@ export default defineTool({
 			.describe("Narrow the search. Defaults to all three."),
 		limit: z.number().int().min(1).max(25).default(10),
 	}),
-	async execute({ query, kinds, limit }) {
-		const result = await searchCrm(query, { kinds, limit });
+	async execute({ query, kinds, limit }, ctx) {
+		return inSessionTenant(ctx, async () => {
+			const result = await searchCrm(query, { kinds, limit });
 
-		return {
-			...result,
-			note:
-				result.total === 0
-					? "Nothing in the CRM matches. That is an answer: say so rather than asking the rep to search for you. Try a shorter or differently spelled term first — a surname alone often works where a full name does not."
-					: result.total > 1
-						? "More than one match. If it is genuinely ambiguous, name the candidates and ask which — never ask for an id."
-						: undefined,
-		};
+			return {
+				...result,
+				note:
+					result.total === 0
+						? "Nothing in the CRM matches. That is an answer: say so rather than asking the rep to search for you. Try a shorter or differently spelled term first — a surname alone often works where a full name does not."
+						: result.total > 1
+							? "More than one match. If it is genuinely ambiguous, name the candidates and ask which — never ask for an id."
+							: undefined,
+			};
+		});
 	},
 });

@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { Db } from "@crm/db";
+import { runAsSystem, runInTenant } from "@crm/db/tenancy";
 import {
 	EVENT_RETENTION_DAYS,
 	isSiteId,
@@ -81,7 +82,12 @@ export class TrackingController {
 	async publicConfig(@Param("siteId") siteId: string) {
 		if (!isSiteId(siteId)) return { config: null };
 
-		const compiled = await this.config.forSite(siteId);
+		const organizationId = await this.config.organizationForSite(siteId);
+		if (!organizationId) return { config: null };
+
+		const compiled = await runInTenant(organizationId, () =>
+			this.config.forSite(siteId),
+		);
 
 		return compiled
 			? { config: compiled.config, hash: compiled.hash }
@@ -119,10 +125,17 @@ export class TrackingController {
 		if (!isSiteId(batch?.siteId) || !Array.isArray(batch?.events)) return;
 
 		try {
-			await this.ingest.accept(batch, {
-				origin: origin ?? null,
-				userAgent: userAgent ?? null,
-			});
+			const organizationId = await this.config.organizationForSite(
+				batch.siteId,
+			);
+			if (!organizationId) return;
+
+			await runInTenant(organizationId, () =>
+				this.ingest.accept(batch, {
+					origin: origin ?? null,
+					userAgent: userAgent ?? null,
+				}),
+			);
 		} catch (error) {
 			this.logger.error(
 				{ message: "Tracking event was not stored" },
@@ -187,10 +200,16 @@ export class TrackingRetentionController {
 			new Date(Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60_000),
 		);
 
-		const rolled = await this.rollups.run(before);
-		const { removed, complete } = await this.sweepEvents(before);
-		const visitors = await this.sweepVisitors(before);
-		const counters = await this.counters.sweep();
+		const { rolled, removed, complete, visitors, counters } = await runAsSystem(
+			"sweep tracking data past retention in every workspace",
+			async () => {
+				const rolled = await this.rollups.run(before);
+				const { removed, complete } = await this.sweepEvents(before);
+				const visitors = await this.sweepVisitors(before);
+				const counters = await this.counters.sweep();
+				return { rolled, removed, complete, visitors, counters };
+			},
+		);
 
 		if (!complete) {
 			this.logger.warn({
@@ -244,6 +263,7 @@ export class TrackingRetentionController {
 				AND NOT EXISTS (
 					SELECT 1 FROM "trackedEvent"
 					WHERE "trackedEvent"."visitorId" = "trackedVisitor"."id"
+						AND "trackedEvent"."organizationId" = "trackedVisitor"."organizationId"
 				);
 		`;
 

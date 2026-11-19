@@ -8,13 +8,14 @@ import {
 	McpOAuthClient,
 	McpOAuthError,
 } from "@crm/auth/mcp-oauth";
-import {
-	canManageConnections,
-	WORKSPACE_ID,
-	workspaceRoleOf,
-} from "@crm/auth/organization";
+import { canManageConnections, workspaceRoleOf } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import { PRIORITY } from "@crm/db/agent-tasks";
+import {
+	requireOrganizationId,
+	runAsSystem,
+	runInTenant,
+} from "@crm/db/tenancy";
 import {
 	vendorAccess,
 	vendorBySlug,
@@ -163,7 +164,7 @@ export class McpConnectionsService {
 		const [role, connections, agentRows] = await Promise.all([
 			workspaceRoleOf(userId, this.db),
 			this.db.mcpConnection.findMany({
-				where: { organizationId: WORKSPACE_ID },
+				where: { organizationId: requireOrganizationId() },
 				select: {
 					platformSlug: true,
 					status: true,
@@ -259,12 +260,12 @@ export class McpConnectionsService {
 			await tx.mcpConnection.upsert({
 				where: {
 					organizationId_platformSlug: {
-						organizationId: WORKSPACE_ID,
+						organizationId: requireOrganizationId(),
 						platformSlug: vendor.slug,
 					},
 				},
 				create: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug: vendor.slug,
 					status: "CONNECTING",
 					accessMode: ACCESS_MODE[input.accessMode],
@@ -283,7 +284,7 @@ export class McpConnectionsService {
 			await tx.mcpOauthState.create({
 				data: {
 					stateHash: hash,
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					userId,
 					platformSlug: vendor.slug,
 					accessMode: ACCESS_MODE[input.accessMode],
@@ -319,7 +320,7 @@ export class McpConnectionsService {
 		const connection = await this.db.mcpConnection.findUnique({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug: input.platformSlug,
 				},
 			},
@@ -336,7 +337,7 @@ export class McpConnectionsService {
 		const connection = await this.db.mcpConnection.findUnique({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug,
 				},
 			},
@@ -391,7 +392,7 @@ export class McpConnectionsService {
 		const connection = await this.db.mcpConnection.findUnique({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug,
 				},
 			},
@@ -424,6 +425,24 @@ export class McpConnectionsService {
 	}
 
 	async callback(input: CallbackInput): Promise<string> {
+		const organizationId = await this.stateOrganization(input.state);
+		if (!organizationId) {
+			throw new BadRequestException("The MCP authorization state is invalid.");
+		}
+		return runInTenant(organizationId, () => this.completeCallback(input));
+	}
+
+	private async stateOrganization(rawState: string): Promise<string | null> {
+		const row = await runAsSystem("find the workspace of an MCP sign-in", () =>
+			this.db.mcpOauthState.findUnique({
+				where: { stateHash: stateHash(rawState) },
+				select: { organizationId: true },
+			}),
+		);
+		return row?.organizationId ?? null;
+	}
+
+	private async completeCallback(input: CallbackInput): Promise<string> {
 		await this.assertManager(input.userId);
 		const box = createMcpSecretBox();
 		if (!box)
@@ -503,7 +522,7 @@ export class McpConnectionsService {
 		const connection = await this.db.mcpConnection.findUniqueOrThrow({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug: vendor.slug,
 				},
 			},
@@ -553,6 +572,17 @@ export class McpConnectionsService {
 	}
 
 	async failCallback(rawState: string, userId: string): Promise<void> {
+		const organizationId = await this.stateOrganization(rawState);
+		if (!organizationId) return;
+		await runInTenant(organizationId, () =>
+			this.recordFailedCallback(rawState, userId),
+		);
+	}
+
+	private async recordFailedCallback(
+		rawState: string,
+		userId: string,
+	): Promise<void> {
 		const state = await this.db.mcpOauthState.findUnique({
 			where: { stateHash: stateHash(rawState) },
 			select: { userId: true, platformSlug: true },
@@ -561,7 +591,7 @@ export class McpConnectionsService {
 
 		await this.db.mcpConnection.updateMany({
 			where: {
-				organizationId: WORKSPACE_ID,
+				organizationId: requireOrganizationId(),
 				platformSlug: state.platformSlug,
 				status: "CONNECTING",
 			},
@@ -574,7 +604,7 @@ export class McpConnectionsService {
 		const connection = await this.db.mcpConnection.findUnique({
 			where: {
 				organizationId_platformSlug: {
-					organizationId: WORKSPACE_ID,
+					organizationId: requireOrganizationId(),
 					platformSlug,
 				},
 			},
@@ -634,6 +664,20 @@ export class McpConnectionsService {
 	}
 
 	async token(connectionId: string) {
+		const owner = await runAsSystem(
+			"find the workspace of an MCP connection",
+			() =>
+				this.db.mcpConnection.findUnique({
+					where: { id: connectionId },
+					select: { organizationId: true },
+				}),
+		);
+		if (!owner)
+			throw new NotFoundException("The MCP connection is not active.");
+		return runInTenant(owner.organizationId, () => this.tokenFor(connectionId));
+	}
+
+	private async tokenFor(connectionId: string) {
 		const box = createMcpSecretBox();
 		if (!box) {
 			throw new ServiceUnavailableException(

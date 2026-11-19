@@ -7,6 +7,7 @@ import {
 	queueDueAgentRuns,
 } from "../lib/custom-agent-dispatch";
 import { brief, drainAll, taskAuth } from "../lib/dispatch";
+import { forEachOrganization } from "../lib/organizations";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
 
 export default defineSchedule({
@@ -14,7 +15,7 @@ export default defineSchedule({
 	async run({ to, waitUntil, appAuth }) {
 		waitUntil(
 			Promise.all([
-				sweepBlankFacts(),
+				forEachOrganization("Blank fact sweep", () => sweepBlankFacts()),
 
 				(async () => {
 					await reconcileStaleTasks();
@@ -23,11 +24,14 @@ export default defineSchedule({
 							auth: taskAuth(task, appAuth),
 						}),
 					);
-					await queueDueAgentRuns();
-					const [builderIds, runIds] = await Promise.all([
-						pendingBuilderSubmissionIds(),
-						pendingAgentRunIds(),
-					]);
+					await forEachOrganization("Scheduled agent runs", () =>
+						queueDueAgentRuns(),
+					);
+					const pending = await forEachOrganization("Queued agent work", () =>
+						Promise.all([pendingBuilderSubmissionIds(), pendingAgentRunIds()]),
+					);
+					const builderIds = pending.flatMap(([ids]) => ids);
+					const runIds = pending.flatMap(([, ids]) => ids);
 
 					await Promise.all([
 						...builderIds.map((builderSubmissionId) =>

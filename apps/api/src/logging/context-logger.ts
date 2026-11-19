@@ -39,6 +39,7 @@ interface JsonLogRecord {
 	stack?: unknown;
 	requestId?: string;
 	userId?: string;
+	organizationId?: string;
 }
 
 @Injectable()
@@ -72,11 +73,13 @@ export class ContextLogger extends ConsoleLogger {
 			requestId: request.requestId,
 		};
 
-		if (!request.userId) {
-			return correlated;
-		}
-
-		return { ...correlated, userId: request.userId };
+		return {
+			...correlated,
+			...(request.userId && { userId: request.userId }),
+			...(request.organizationId && {
+				organizationId: request.organizationId,
+			}),
+		};
 	}
 
 	protected override stringifyMessage(

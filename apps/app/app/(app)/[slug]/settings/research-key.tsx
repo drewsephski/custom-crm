@@ -1,6 +1,6 @@
 "use client";
 
-import { CONTEXT_DEV_SIGNUP_URL } from "@crm/db/settings";
+import { CONTEXT_DEV_SIGNUP_URL } from "@crm/db/settings-constants";
 import { Button } from "@crm/ui/components/button";
 import { Field, FieldLabel } from "@crm/ui/components/field";
 import { Input } from "@crm/ui/components/input";

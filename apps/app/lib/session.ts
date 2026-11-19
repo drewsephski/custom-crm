@@ -1,5 +1,4 @@
 import { auth, type Session } from "@crm/auth/auth";
-import { needsMailboxGrant } from "@crm/auth/scopes";
 import { db } from "@crm/db";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -26,13 +25,3 @@ export const signInAccounts = cache(async (userId: string) =>
 		select: { providerId: true, scope: true },
 	}),
 );
-
-export async function requireMailboxAccess(): Promise<Session> {
-	const session = await requireSession();
-
-	if (needsMailboxGrant(await signInAccounts(session.user.id))) {
-		redirect("/grant-access");
-	}
-
-	return session;
-}

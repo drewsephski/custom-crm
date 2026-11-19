@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { listDeals } from "../lib/lookup";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -21,8 +22,10 @@ export default defineTool({
 		limit: z.number().int().min(1).max(100).default(50),
 		cursor: z.string().optional(),
 	}),
-	async execute(input) {
-		return listDeals(input);
+	async execute(input, ctx) {
+		return inSessionTenant(ctx, async () => {
+			return listDeals(input);
+		});
 	},
 	toModelOutput(output) {
 		return {

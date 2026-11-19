@@ -18,6 +18,7 @@ type BridgeClaims = {
 	contactId?: string;
 	companyId?: string;
 	dealId?: string;
+	organizationId: string;
 	iat: number;
 	nbf: number;
 	exp: number;
@@ -29,6 +30,7 @@ export async function mintBridgeToken(
 		email: string;
 		name: string;
 	},
+	organizationId: string,
 	record: { contactId?: string; companyId?: string; dealId?: string } = {},
 ): Promise<string> {
 	const secret = process.env.AGENT_BRIDGE_SECRET;
@@ -41,6 +43,7 @@ export async function mintBridgeToken(
 		iss: ISSUER,
 		aud: AUDIENCE,
 		sub: user.id,
+		organizationId,
 		email: user.email,
 		name: user.name,
 		iat: now,

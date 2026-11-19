@@ -6,6 +6,7 @@ context until you read them, and the rules in them are not optional.
 
 | Working on | Read first |
 | --- | --- |
+| Anything that reads or writes tenant data, adds a table, raw SQL, crons, auth | `docs/tenancy.md` |
 | Anything in `apps/api` — tRPC, auth, logging, sync, deletes, caching | `docs/api.md` |
 | `apps/agent` — the eve research agent, tools, tasks, dispatch | `docs/agent.md` |
 | `.env`, configuration, which variables exist and why | `docs/environment.md` |

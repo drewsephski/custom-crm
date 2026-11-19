@@ -5,6 +5,7 @@ import {
 	setBuilderConversationTitle,
 } from "../lib/conversation-title";
 import { purposeOf, requireAttribute } from "../lib/session-purpose";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -13,14 +14,18 @@ export default defineTool({
 		title: z.string().trim().min(1).max(BUILDER_CONVERSATION_TITLE_MAX_LENGTH),
 	}),
 	async execute({ title }, ctx) {
-		if (purposeOf(ctx) !== "builder") {
-			throw new Error("Chat titles can only be set in builder conversations.");
-		}
+		return inSessionTenant(ctx, async () => {
+			if (purposeOf(ctx) !== "builder") {
+				throw new Error(
+					"Chat titles can only be set in builder conversations.",
+				);
+			}
 
-		return setBuilderConversationTitle(
-			requireAttribute(ctx, "conversationId"),
-			requireAttribute(ctx, "userId"),
-			title,
-		);
+			return setBuilderConversationTitle(
+				requireAttribute(ctx, "conversationId"),
+				requireAttribute(ctx, "userId"),
+				title,
+			);
+		});
 	},
 });

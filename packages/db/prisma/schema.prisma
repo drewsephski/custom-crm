@@ -41,7 +41,7 @@ model User {
   conversationShares      AgentConversationShare[]      @relation("ConversationShareCreator")
   conversationSubmissions AgentConversationSubmission[] @relation("ConversationSubmissionAuthor")
   conversationFeedback    AgentConversationFeedback[]   @relation("ConversationFeedbackAuthor")
-  slackMemberMatch        SlackMemberMatch?
+  slackMemberMatches      SlackMemberMatch[]
   connectedMcpConnections McpConnection[]               @relation("McpConnectionUser")
   mcpOauthStates          McpOauthState[]               @relation("McpOauthStateUser")
 
@@ -57,8 +57,11 @@ model User {
 }
 
 model SlackMemberMatch {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id          String   @id @default(cuid())
-  crmUserId   String   @unique
+  crmUserId   String
   crmUser     User     @relation(fields: [crmUserId], references: [id], onDelete: Cascade)
   slackUserId String?
   slackHandle String?
@@ -66,12 +69,16 @@ model SlackMemberMatch {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([organizationId, crmUserId])
   @@index([slackUserId])
   @@map("slackMemberMatch")
 }
 
 model SlackChannel {
-  id                String    @id
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id                String
   name              String
   memberCount       Int?
   available         Boolean   @default(true)
@@ -82,7 +89,8 @@ model SlackChannel {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  @@index([available, name])
+  @@id([organizationId, id])
+  @@index([organizationId, available, name])
   @@index([updatedAt])
   @@map("slackChannel")
 }
@@ -99,14 +107,18 @@ model SlackInstallation {
 }
 
 model SlackWorkspaceGrant {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id         String   @id @default(cuid())
-  teamId     String   @unique
+  teamId     String
   teamName   String?
   userToken  String
   userScopes String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@unique([organizationId, teamId])
   @@map("slackWorkspaceGrant")
 }
 
@@ -170,7 +182,7 @@ enum McpToolReviewState {
 model McpConnection {
   id String @id @default(cuid())
 
-  organizationId String
+  organizationId String       @default(dbgenerated("crm_current_org()"))
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   platformSlug  String
@@ -224,6 +236,9 @@ model McpClientRegistration {
 }
 
 model McpToolSnapshot {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   connectionId String
@@ -242,6 +257,7 @@ model McpToolSnapshot {
   @@unique([connectionId, name, fingerprint])
   @@index([connectionId, name, lastSeenAt])
   @@index([reviewState, lastSeenAt])
+  @@index([organizationId])
   @@map("mcpToolSnapshot")
 }
 
@@ -249,7 +265,7 @@ model McpOauthState {
   id String @id @default(cuid())
 
   stateHash      String       @unique
-  organizationId String
+  organizationId String       @default(dbgenerated("crm_current_org()"))
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation("McpOauthStateUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -406,6 +422,9 @@ enum AgentResponseRating {
 }
 
 model Company {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id          String  @id @default(cuid())
   name        String
   domain      String?
@@ -459,25 +478,33 @@ model Company {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  @@unique([domain], map: "company_domain_active_key", where: { archivedAt: null })
+  @@unique([organizationId, domain], map: "company_org_domain_active_key", where: { archivedAt: null })
   @@index([ownerId])
   @@index([name])
   @@index([lastActivityAt])
   @@index([archivedAt])
+  @@index([organizationId])
   @@map("company")
 }
 
 model CompanyEnrichment {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   companyId String   @id
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   source    String   @default("context.dev")
   raw       Json
   fetchedAt DateTime @default(now())
 
+  @@index([organizationId])
   @@map("companyEnrichment")
 }
 
 model Contact {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id          String  @id @default(cuid())
   firstName   String
   lastName    String?
@@ -523,11 +550,12 @@ model Contact {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
-  @@unique([email], map: "contact_email_active_key", where: { archivedAt: null })
+  @@unique([organizationId, email], map: "contact_org_email_active_key", where: { archivedAt: null })
   @@index([companyId])
   @@index([ownerId])
   @@index([lastActivityAt])
   @@index([archivedAt])
+  @@index([organizationId])
   @@map("contact")
 }
 
@@ -545,6 +573,9 @@ enum FactStatus {
 }
 
 model ContactFact {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id        String  @id @default(cuid())
   contactId String
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -572,10 +603,14 @@ model ContactFact {
 
   @@index([contactId, field, status])
   @@index([status, observedAt])
+  @@index([organizationId])
   @@map("contactFact")
 }
 
 model ContactBrief {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   contactId String  @id
   contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
@@ -588,10 +623,14 @@ model ContactBrief {
 
   refreshedAt DateTime @default(now())
 
+  @@index([organizationId])
   @@map("contactBrief")
 }
 
 model AgentTask {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id        String  @id @default(cuid())
   contactId String?
   companyId String?
@@ -621,10 +660,14 @@ model AgentTask {
   @@index([contactId])
   @@index([dealId])
   @@index([kind, subject], where: { finishedAt: null })
+  @@index([organizationId])
   @@map("agentTask")
 }
 
 model AgentEvent {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id             String             @id
   sessionId      String
   streamIndex    Int?
@@ -638,14 +681,18 @@ model AgentEvent {
 
   emittedAt DateTime
 
-  @@index([sessionId, emittedAt])
   @@unique([sessionId, streamIndex])
+  @@index([sessionId, emittedAt])
   @@index([contactId, emittedAt])
   @@index([conversationId, emittedAt])
+  @@index([organizationId])
   @@map("agentEvent")
 }
 
 model AgentConversation {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   kind AgentConversationKind @default(RECORD)
@@ -663,9 +710,9 @@ model AgentConversation {
   agentId String?
   agent   AgentDefinition? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
-  sessionId           String? @unique
-  continuationToken   String?
-  streamIndex         Int     @default(0)
+  sessionId            String? @unique
+  continuationToken    String?
+  streamIndex          Int     @default(0)
   pendingInputRequests Json?
 
   permissionMode AgentConversationPermissionMode @default(MANUAL)
@@ -691,10 +738,14 @@ model AgentConversation {
   @@index([dealId, lastMessageAt])
   @@index([userId, kind, lastMessageAt])
   @@index([agentId, lastMessageAt])
+  @@index([organizationId])
   @@map("agentConversation")
 }
 
 model AgentConversationFeedback {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   conversationId String
@@ -711,10 +762,14 @@ model AgentConversationFeedback {
 
   @@unique([conversationId, userId, messageId])
   @@index([conversationId, createdAt])
+  @@index([organizationId])
   @@map("agentConversationFeedback")
 }
 
 model AgentConversationShare {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   conversationId String
@@ -732,10 +787,14 @@ model AgentConversationShare {
 
   @@unique([conversationId], map: "agentConversationShare_one_active_per_conversation", where: { revokedAt: null })
   @@index([conversationId, revokedAt])
+  @@index([organizationId])
   @@map("agentConversationShare")
 }
 
 model AgentConversationSubmission {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   conversationId String
@@ -763,10 +822,14 @@ model AgentConversationSubmission {
   @@unique([conversationId, inputRequestId])
   @@index([conversationId, createdAt])
   @@index([status, createdAt])
+  @@index([organizationId])
   @@map("agentConversationSubmission")
 }
 
 model AgentConversationAttachment {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   submissionId String
@@ -781,10 +844,14 @@ model AgentConversationAttachment {
   createdAt DateTime @default(now())
 
   @@index([submissionId, position])
+  @@index([organizationId])
   @@map("agentConversationAttachment")
 }
 
 model AgentDefinition {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   name        String
@@ -812,10 +879,14 @@ model AgentDefinition {
   @@unique([currentVersionId, id])
   @@index([status, updatedAt])
   @@index([createdById, createdAt])
+  @@index([organizationId])
   @@map("agentDefinition")
 }
 
 model AgentVersion {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   agentId String
@@ -852,10 +923,14 @@ model AgentVersion {
   @@unique([id, agentId])
   @@index([agentId, createdAt])
   @@index([status, createdAt])
+  @@index([organizationId])
   @@map("agentVersion")
 }
 
 model AgentBuilderArtifact {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   conversationId String?
@@ -876,10 +951,14 @@ model AgentBuilderArtifact {
   @@unique([versionId, path, revision], map: "agentBuilderArtifact_version_path_revision_key", where: { versionId: { not: null } })
   @@index([conversationId, createdAt])
   @@index([versionId, path])
+  @@index([organizationId])
   @@map("agentBuilderArtifact")
 }
 
 model AgentTrigger {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   agentId String
@@ -907,10 +986,14 @@ model AgentTrigger {
   @@index([agentId, enabled])
   @@index([enabled, nextRunAt])
   @@index([versionId])
+  @@index([organizationId])
   @@map("agentTrigger")
 }
 
 model AgentRun {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   agentId String
@@ -961,10 +1044,14 @@ model AgentRun {
   @@index([versionId, createdAt])
   @@index([status, createdAt])
   @@index([triggerId, createdAt])
+  @@index([organizationId])
   @@map("agentRun")
 }
 
 model AgentRunEvent {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   runId String
@@ -977,10 +1064,14 @@ model AgentRunEvent {
 
   @@unique([runId, sequence])
   @@index([runId, emittedAt])
+  @@index([organizationId])
   @@map("agentRunEvent")
 }
 
 model AgentAction {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   agentId String
@@ -1015,10 +1106,14 @@ model AgentAction {
   @@index([runId, plannedAt])
   @@index([provider, externalId])
   @@index([status, plannedAt])
+  @@index([organizationId])
   @@map("agentAction")
 }
 
 model AgentAuditEvent {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   agentId String
@@ -1044,10 +1139,14 @@ model AgentAuditEvent {
   @@index([versionId, emittedAt])
   @@index([actorUserId, emittedAt])
   @@index([type, emittedAt])
+  @@index([organizationId])
   @@map("agentAuditEvent")
 }
 
 model Deal {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id            String              @id @default(cuid())
   conversations AgentConversation[]
   name          String
@@ -1087,6 +1186,7 @@ model Deal {
   @@index([baseAmount])
   @@index([currency])
   @@index([archivedAt])
+  @@index([organizationId])
   @@map("deal")
 }
 
@@ -1096,6 +1196,9 @@ enum RateSource {
 }
 
 model ExchangeRate {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id            String     @id @default(cuid())
   baseCurrency  String
   quoteCurrency String
@@ -1106,12 +1209,15 @@ model ExchangeRate {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
-  @@unique([baseCurrency, quoteCurrency, source])
-  @@index([baseCurrency, quoteCurrency])
+  @@unique([organizationId, baseCurrency, quoteCurrency, source])
+  @@index([organizationId, baseCurrency, quoteCurrency])
   @@map("exchangeRate")
 }
 
 model DealContact {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   dealId    String
   deal      Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   contactId String
@@ -1120,6 +1226,7 @@ model DealContact {
 
   @@id([dealId, contactId])
   @@index([contactId])
+  @@index([organizationId])
   @@map("dealContact")
 }
 
@@ -1143,6 +1250,9 @@ enum FieldType {
 }
 
 model FieldDefinition {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id     String      @id @default(cuid())
   entity FieldEntity
   key    String
@@ -1166,12 +1276,16 @@ model FieldDefinition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([entity, key])
+  @@unique([organizationId, entity, key])
   @@index([entity, position])
+  @@index([organizationId])
   @@map("fieldDefinition")
 }
 
 model FieldOption {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id       String          @id @default(cuid())
   fieldId  String
   field    FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
@@ -1182,10 +1296,14 @@ model FieldOption {
   values     FieldValue[]
 
   @@index([fieldId, position])
+  @@index([organizationId])
   @@map("fieldOption")
 }
 
 model FieldValue {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id      String          @id @default(cuid())
   fieldId String
   field   FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
@@ -1219,10 +1337,14 @@ model FieldValue {
   @@index([dealId])
   @@index([optionId])
   @@index([userId])
+  @@index([organizationId])
   @@map("fieldValue")
 }
 
 model SavedView {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id      String      @id @default(cuid())
   entity  FieldEntity
   name    String
@@ -1235,12 +1357,16 @@ model SavedView {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([entity, ownerId, name])
+  @@unique([organizationId, entity, ownerId, name])
   @@index([entity, shared])
+  @@index([organizationId])
   @@map("savedView")
 }
 
 model Activity {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id      String       @id @default(cuid())
   type    ActivityType
   subject String?
@@ -1274,6 +1400,7 @@ model Activity {
   @@index([contactId, createdAt])
   @@index([dueAt])
   @@index([createdById])
+  @@index([organizationId])
   @@map("activity")
 }
 
@@ -1290,6 +1417,9 @@ enum EmailDirection {
 }
 
 model MailboxSync {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1305,14 +1435,18 @@ model MailboxSync {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([userId, source])
+  @@unique([organizationId, userId, source])
   @@index([status])
+  @@index([organizationId])
   @@map("mailboxSync")
 }
 
 model EmailThread {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id            String  @id @default(cuid())
-  rootMessageId String  @unique
+  rootMessageId String
   subject       String?
 
   companyId String?
@@ -1330,17 +1464,22 @@ model EmailThread {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, rootMessageId])
   @@index([companyId, lastMessageAt])
   @@index([contactId, lastMessageAt])
+  @@index([organizationId])
   @@map("emailThread")
 }
 
 model EmailMessage {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id       String      @id @default(cuid())
   threadId String
   thread   EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  rfcMessageId     String  @unique
+  rfcMessageId     String
   syncedByUserId   String?
   gmailMessageId   String?
   outlookMessageId String?
@@ -1357,11 +1496,16 @@ model EmailMessage {
 
   createdAt DateTime @default(now())
 
+  @@unique([organizationId, rfcMessageId])
   @@index([threadId, sentAt])
+  @@index([organizationId])
   @@map("emailMessage")
 }
 
 model CalendarEvent {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id                String   @id @default(cuid())
   iCalUid           String
   originalStartTime DateTime
@@ -1391,13 +1535,17 @@ model CalendarEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([iCalUid, originalStartTime])
+  @@unique([organizationId, iCalUid, originalStartTime])
   @@index([companyId, startsAt])
   @@index([contactId, startsAt])
+  @@index([organizationId])
   @@map("calendarEvent")
 }
 
 model CalendarAttendee {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id      String        @id @default(cuid())
   eventId String
   event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -1411,27 +1559,37 @@ model CalendarAttendee {
 
   @@unique([eventId, email])
   @@index([contactId])
+  @@index([organizationId])
   @@map("calendarAttendee")
 }
 
 model SuppressedDomain {
-  domain    String   @id
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  domain    String
   reason    String?
   createdAt DateTime @default(now())
 
+  @@id([organizationId, domain])
   @@map("suppressedDomain")
 }
 
 model SuppressedContact {
-  email     String   @id
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  email     String
   reason    String?
   createdAt DateTime @default(now())
 
+  @@id([organizationId, email])
   @@map("suppressedContact")
 }
 
 model AppSetting {
-  id String @id
+  organizationId String       @id @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   agentModelId String?
 
@@ -1466,8 +1624,11 @@ enum DomainScope {
 }
 
 model TrackedDomain {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id    String      @id @default(cuid())
-  host  String      @unique
+  host  String
   scope DomainScope @default(EXACT_HOST)
 
   pageViews  Int       @default(0)
@@ -1475,11 +1636,15 @@ model TrackedDomain {
 
   createdAt DateTime @default(now())
 
+  @@unique([organizationId, host])
   @@map("trackedDomain")
 }
 
 model TrackedVisitor {
-  id String @id
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id String
 
   contactId String?
   contact   Contact? @relation("VisitorContact", fields: [contactId], references: [id], onDelete: SetNull)
@@ -1505,12 +1670,16 @@ model TrackedVisitor {
   firstSeen DateTime @default(now())
   lastSeen  DateTime @updatedAt
 
+  @@id([organizationId, id])
   @@index([contactId])
   @@index([firstSource])
   @@map("trackedVisitor")
 }
 
 model TrackedEvent {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   visitorId String
@@ -1530,6 +1699,7 @@ model TrackedEvent {
   @@index([occurredAt])
   @@index([host, occurredAt])
   @@index([source, occurredAt])
+  @@index([organizationId])
   @@map("trackedEvent")
 }
 
@@ -1543,18 +1713,24 @@ model TrackingCounter {
 }
 
 model TrackedPageDaily {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   day      DateTime
   host     String
   path     String
   views    Int      @default(0)
   visitors Int      @default(0)
 
-  @@id([day, host, path])
-  @@index([host, day])
+  @@id([organizationId, day, host, path])
+  @@index([organizationId, host, day])
   @@map("trackedPageDaily")
 }
 
 model FormSubmission {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   id String @id @default(cuid())
 
   visitorId String?
@@ -1570,14 +1746,15 @@ model FormSubmission {
   firstTouch Json?
   lastTouch  Json?
 
-  dedupeKey  String    @unique
+  dedupeKey  String
   filedAt    DateTime?
   skipReason String?
 
   createdAt DateTime @default(now())
 
+  @@unique([organizationId, dedupeKey])
   @@index([contactId])
-  @@index([createdAt])
+  @@index([organizationId, createdAt])
   @@map("formSubmission")
 }
 
@@ -1611,24 +1788,71 @@ model TelemetryCounter {
 }
 
 model Organization {
-  id             String          @id
-  name           String
-  slug           String
-  logo           String?
-  createdAt      DateTime
-  metadata       String?
-  website        String?
-  members        Member[]
-  invitations    Invitation[]
-  mcpConnections McpConnection[]
-  mcpOauthStates McpOauthState[]
+  id                           String                        @id
+  name                         String
+  slug                         String
+  logo                         String?
+  createdAt                    DateTime
+  metadata                     String?
+  website                      String?
+  members                      Member[]
+  invitations                  Invitation[]
+  mcpConnections               McpConnection[]
+  mcpOauthStates               McpOauthState[]
+  companies                    Company[]
+  companyEnrichments           CompanyEnrichment[]
+  contacts                     Contact[]
+  contactFacts                 ContactFact[]
+  contactBriefs                ContactBrief[]
+  agentTasks                   AgentTask[]
+  agentEvents                  AgentEvent[]
+  agentConversations           AgentConversation[]
+  agentConversationFeedback    AgentConversationFeedback[]
+  agentConversationShares      AgentConversationShare[]
+  agentConversationSubmissions AgentConversationSubmission[]
+  agentConversationAttachments AgentConversationAttachment[]
+  agentDefinitions             AgentDefinition[]
+  agentVersions                AgentVersion[]
+  agentBuilderArtifacts        AgentBuilderArtifact[]
+  agentTriggers                AgentTrigger[]
+  agentRuns                    AgentRun[]
+  agentRunEvents               AgentRunEvent[]
+  agentActions                 AgentAction[]
+  agentAuditEvents             AgentAuditEvent[]
+  deals                        Deal[]
+  dealContacts                 DealContact[]
+  fieldDefinitions             FieldDefinition[]
+  fieldOptions                 FieldOption[]
+  fieldValues                  FieldValue[]
+  savedViews                   SavedView[]
+  activities                   Activity[]
+  mailboxSyncs                 MailboxSync[]
+  emailThreads                 EmailThread[]
+  emailMessages                EmailMessage[]
+  calendarEvents               CalendarEvent[]
+  calendarAttendees            CalendarAttendee[]
+  suppressedDomains            SuppressedDomain[]
+  suppressedContacts           SuppressedContact[]
+  trackedDomains               TrackedDomain[]
+  trackedVisitors              TrackedVisitor[]
+  trackedEvents                TrackedEvent[]
+  trackedPageDaily             TrackedPageDaily[]
+  formSubmissions              FormSubmission[]
+  mcpToolSnapshots             McpToolSnapshot[]
+  slackMemberMatches           SlackMemberMatch[]
+  slackChannels                SlackChannel[]
+  slackWorkspaceGrants         SlackWorkspaceGrant[]
+  appSetting                   AppSetting?
+  profile                      WorkspaceProfile?
+  exchangeRates                ExchangeRate[]
 
   @@unique([slug])
   @@map("organization")
 }
 
 model WorkspaceProfile {
-  id String @id
+  organizationId String       @id @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   website   String
   narrative String

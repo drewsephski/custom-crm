@@ -3,6 +3,7 @@ import { z } from "zod";
 import { changeWrite } from "../lib/approval";
 import { writeField } from "../lib/fields";
 import { focusOn } from "../lib/focus";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -20,10 +21,12 @@ export default defineTool({
 			),
 	}),
 	approval: changeWrite(),
-	async execute({ entity, recordId, key, value }) {
-		if (entity === "COMPANY") focusOn({ companyId: recordId });
-		if (entity === "CONTACT") focusOn({ contactId: recordId });
+	async execute({ entity, recordId, key, value }, ctx) {
+		return inSessionTenant(ctx, async () => {
+			if (entity === "COMPANY") focusOn({ companyId: recordId });
+			if (entity === "CONTACT") focusOn({ contactId: recordId });
 
-		return writeField({ entity, recordId, key, value });
+			return writeField({ entity, recordId, key, value });
+		});
 	},
 });

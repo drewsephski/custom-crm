@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { postRunSlackMessage } from "../../../lib/run-runtime";
 import { requireTeamAgentAttribute } from "../../../lib/session-purpose";
+import { inSessionTenant } from "../../../lib/tenant-scope";
 
 export default defineTool({
 	description:
@@ -10,11 +11,13 @@ export default defineTool({
 		text: z.string().trim().min(1).max(4_000),
 	}),
 	async execute(input, ctx) {
-		return postRunSlackMessage(
-			requireTeamAgentAttribute(ctx, "runId"),
-			ctx.callId,
-			input,
-			ctx.abortSignal,
-		);
+		return inSessionTenant(ctx, async () => {
+			return postRunSlackMessage(
+				requireTeamAgentAttribute(ctx, "runId"),
+				ctx.callId,
+				input,
+				ctx.abortSignal,
+			);
+		});
 	},
 });

@@ -1,122 +1,119 @@
-import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { ensureWorkspaceMembership, WORKSPACE_ID } from "../src/organization";
+import { runAsSystem } from "@crm/db/tenancy";
+import {
+	activeOrganizationForNewSession,
+	canChangeRoleOf,
+	canGrantRole,
+	canRemoveMember,
+	defaultOrganizationFor,
+	membershipOf,
+} from "../src/organization";
 
 const suffix = process.env.TEST_RUN_ID ?? "organization-spec";
+const idOf = (label: string) => `org-spec-${suffix}-${label}`;
 
-const emailOf = (label: string) => `${label}.${suffix}@example.test`;
+const FIRST_ORG = idOf("first");
+const SECOND_ORG = idOf("second");
+const STRANGER_ORG = idOf("stranger");
+const MEMBER = idOf("member");
+const NEWCOMER = idOf("newcomer");
 
-let firstId: string;
-let secondId: string;
-
-const seedUser = async (label: string, createdAt: Date): Promise<string> => {
-	const user = await db.user.create({
-		data: {
-			id: `${suffix}-${label}`,
-			name: label,
-			email: emailOf(label),
-			createdAt,
-			updatedAt: createdAt,
-		},
-		select: { id: true },
+async function createOrganization(id: string, createdAt: Date) {
+	await db.organization.create({
+		data: { id, name: id, slug: id, createdAt },
 	});
+}
 
-	return user.id;
-};
-
-const roleOf = async (userId: string): Promise<string | null> => {
-	const member = await db.member.findUnique({
-		where: { organizationId_userId: { organizationId: WORKSPACE_ID, userId } },
-		select: { role: true },
+async function createUser(id: string) {
+	await db.user.create({
+		data: { id, name: id, email: `${id}@example.test` },
 	});
+}
 
-	return member?.role ?? null;
-};
-
-const clear = async () => {
-	await db.member.deleteMany({
-		where: { userId: { startsWith: `${suffix}-` } },
+async function clean() {
+	await runAsSystem("clean organization spec rows", async () => {
+		await db.member.deleteMany({
+			where: { organizationId: { in: [FIRST_ORG, SECOND_ORG, STRANGER_ORG] } },
+		});
+		await db.organization.deleteMany({
+			where: { id: { in: [FIRST_ORG, SECOND_ORG, STRANGER_ORG] } },
+		});
+		await db.user.deleteMany({ where: { id: { in: [MEMBER, NEWCOMER] } } });
 	});
-	await db.user.deleteMany({
-		where: { email: { endsWith: `.${suffix}@example.test` } },
+}
+
+beforeAll(async () => {
+	await clean();
+	await runAsSystem("seed organization spec rows", async () => {
+		await createOrganization(FIRST_ORG, new Date(2026, 0, 1));
+		await createOrganization(SECOND_ORG, new Date(2026, 0, 2));
+		await createOrganization(STRANGER_ORG, new Date(2026, 0, 3));
+		await createUser(MEMBER);
+		await createUser(NEWCOMER);
+		await db.member.createMany({
+			data: [
+				{
+					id: idOf("m-second"),
+					organizationId: SECOND_ORG,
+					userId: MEMBER,
+					role: "member",
+					createdAt: new Date(2026, 1, 2),
+				},
+				{
+					id: idOf("m-first"),
+					organizationId: FIRST_ORG,
+					userId: MEMBER,
+					role: "admin",
+					createdAt: new Date(2026, 1, 1),
+				},
+			],
+		});
 	});
-
-	const strangers = await db.member.count({
-		where: { organizationId: WORKSPACE_ID },
-	});
-
-	if (strangers > 0) {
-		throw new Error(
-			`${strangers} member row(s) this spec did not create are in the workspace, and it needs an empty one to test the owner backfill. It will not delete them: that is somebody's access. Point TEST_DATABASE_URL at a database of your own, or find the spec that leaked them.`,
-		);
-	}
-};
-
-beforeEach(async () => {
-	await clear();
-
-	firstId = await seedUser("first", new Date("2020-01-01T00:00:00Z"));
-	secondId = await seedUser("second", new Date("2021-01-01T00:00:00Z"));
 });
 
-afterAll(clear);
+afterAll(clean);
 
-describe("ensureWorkspaceMembership", () => {
-	it("creates the one workspace and enrols everyone who already had an account", async () => {
-		const workspaceId = await ensureWorkspaceMembership(secondId);
+describe("a new account", () => {
+	it("joins no workspace on its own", async () => {
+		expect(await activeOrganizationForNewSession(NEWCOMER)).toBeNull();
+		expect(await db.member.count({ where: { userId: NEWCOMER } })).toBe(0);
+	});
+});
 
-		expect(workspaceId).toBe(WORKSPACE_ID);
-		expect(await roleOf(firstId)).toBe("owner");
-		expect(await roleOf(secondId)).toBe("member");
+describe("the default workspace", () => {
+	it("is the one the person joined first", async () => {
+		expect(await defaultOrganizationFor(MEMBER)).toBe(FIRST_ORG);
 	});
 
-	it("is idempotent, so signing in again neither duplicates nor re-roles", async () => {
-		await ensureWorkspaceMembership(secondId);
+	it("reads the role from that one workspace only", async () => {
+		expect((await membershipOf(MEMBER, FIRST_ORG))?.role).toBe("admin");
+		expect((await membershipOf(MEMBER, SECOND_ORG))?.role).toBe("member");
+		expect(await membershipOf(MEMBER, STRANGER_ORG)).toBeNull();
+	});
+});
 
-		await db.member.update({
-			where: {
-				organizationId_userId: {
-					organizationId: WORKSPACE_ID,
-					userId: secondId,
-				},
-			},
-			data: { role: "admin" },
-		});
-
-		await ensureWorkspaceMembership(secondId);
-		await ensureWorkspaceMembership(secondId);
-
-		const rows = await db.member.findMany({
-			where: { organizationId: WORKSPACE_ID, userId: secondId },
-		});
-
-		expect(rows).toHaveLength(1);
-		expect(rows[0]?.role).toBe("admin");
+describe("granting roles", () => {
+	it("never grants more than the person granting holds", () => {
+		expect(canGrantRole("owner", "owner")).toBe(true);
+		expect(canGrantRole("admin", "admin")).toBe(true);
+		expect(canGrantRole("admin", "owner")).toBe(false);
+		expect(canGrantRole("member", "member")).toBe(false);
+		expect(canGrantRole(null, "member")).toBe(false);
 	});
 
-	it("joins someone who signs up later as a member", async () => {
-		await ensureWorkspaceMembership(secondId);
-
-		const laterId = await seedUser("later", new Date("2026-01-01T00:00:00Z"));
-
-		await ensureWorkspaceMembership(laterId);
-
-		expect(await roleOf(laterId)).toBe("member");
+	it("keeps owners in an owner's hands", () => {
+		expect(canChangeRoleOf("admin", "owner", "member")).toBe(false);
+		expect(canChangeRoleOf("admin", "member", "owner")).toBe(false);
+		expect(canChangeRoleOf("admin", "member", "admin")).toBe(true);
+		expect(canChangeRoleOf("owner", "owner", "member")).toBe(true);
+		expect(canChangeRoleOf("member", "member", "admin")).toBe(false);
 	});
 
-	it("leaves the owner alone when a later arrival signs in", async () => {
-		await ensureWorkspaceMembership(secondId);
-
-		const laterId = await seedUser("later", new Date("2026-01-01T00:00:00Z"));
-
-		await ensureWorkspaceMembership(laterId);
-
-		expect(await roleOf(firstId)).toBe("owner");
-
-		const owners = await db.member.count({
-			where: { organizationId: WORKSPACE_ID, role: "owner" },
-		});
-
-		expect(owners).toBe(1);
+	it("lets only an owner remove an owner", () => {
+		expect(canRemoveMember("admin", "owner")).toBe(false);
+		expect(canRemoveMember("owner", "owner")).toBe(true);
+		expect(canRemoveMember("admin", "member")).toBe(true);
+		expect(canRemoveMember("member", "member")).toBe(false);
 	});
 });

@@ -3,6 +3,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { extract, type JsonSchema } from "../lib/context-dev";
 import { spend } from "../lib/focus";
+import { inSessionTenant } from "../lib/tenant-scope";
 
 const RESEARCH_SCHEMA: JsonSchema = {
 	type: "object",
@@ -74,76 +75,79 @@ export default defineTool({
 	inputSchema: z.object({
 		companyId: z.string(),
 	}),
-	async execute({ companyId }) {
-		const company = await db.company.findUnique({
-			where: { id: companyId },
-			select: {
-				id: true,
-				name: true,
-				domain: true,
-				website: true,
-				ownerId: true,
-			},
-		});
-
-		if (!company)
-			return { written: false as const, reason: "No such company." };
-
-		const url =
-			company.website ?? (company.domain ? `https://${company.domain}` : null);
-
-		if (!url) {
-			return {
-				written: false as const,
-				reason: "This company has no website.",
-			};
-		}
-
-		const charge = spend(2);
-		if (!charge.ok) return { written: false as const, reason: charge.reason };
-
-		const result = await extract(url, RESEARCH_SCHEMA, RESEARCH_INSTRUCTIONS);
-
-		if (result.outcome === "failed") {
-			return { written: false as const, reason: result.reason };
-		}
-
-		const author =
-			company.ownerId ??
-			(await db.user.findFirst({ select: { id: true } }))?.id ??
-			null;
-
-		if (!author)
-			return { written: false as const, reason: "No user to attribute to." };
-
-		const scalar = briefScalar.parse(result.data);
-		const activity = await db.activity.create({
-			data: {
-				type: ActivityType.ENRICHMENT,
-				subject: `Research brief — ${company.name}`,
-				body:
-					scalar === null
-						? formatBrief(researchBrief.parse(result.data))
-						: String(scalar),
-				occurredAt: new Date(),
-				companyId: company.id,
-				createdById: author,
-				meta: {
-					source: "context.dev",
-					endpoint: "web/extract",
-					creditCost: 10,
-					agent: "people-research",
+	async execute({ companyId }, ctx) {
+		return inSessionTenant(ctx, async () => {
+			const company = await db.company.findUnique({
+				where: { id: companyId },
+				select: {
+					id: true,
+					name: true,
+					domain: true,
+					website: true,
+					ownerId: true,
 				},
-			},
-			select: { id: true },
-		});
+			});
 
-		await db.company.update({
-			where: { id: companyId },
-			data: { lastActivityAt: new Date() },
-		});
+			if (!company)
+				return { written: false as const, reason: "No such company." };
 
-		return { written: true as const, activityId: activity.id };
+			const url =
+				company.website ??
+				(company.domain ? `https://${company.domain}` : null);
+
+			if (!url) {
+				return {
+					written: false as const,
+					reason: "This company has no website.",
+				};
+			}
+
+			const charge = spend(2);
+			if (!charge.ok) return { written: false as const, reason: charge.reason };
+
+			const result = await extract(url, RESEARCH_SCHEMA, RESEARCH_INSTRUCTIONS);
+
+			if (result.outcome === "failed") {
+				return { written: false as const, reason: result.reason };
+			}
+
+			const author =
+				company.ownerId ??
+				(await db.user.findFirst({ select: { id: true } }))?.id ??
+				null;
+
+			if (!author)
+				return { written: false as const, reason: "No user to attribute to." };
+
+			const scalar = briefScalar.parse(result.data);
+			const activity = await db.activity.create({
+				data: {
+					type: ActivityType.ENRICHMENT,
+					subject: `Research brief — ${company.name}`,
+					body:
+						scalar === null
+							? formatBrief(researchBrief.parse(result.data))
+							: String(scalar),
+					occurredAt: new Date(),
+					companyId: company.id,
+					createdById: author,
+					meta: {
+						source: "context.dev",
+						endpoint: "web/extract",
+						creditCost: 10,
+						agent: "people-research",
+					},
+				},
+				select: { id: true },
+			});
+
+			await db.company.update({
+				where: { id: companyId },
+				data: { lastActivityAt: new Date() },
+			});
+
+			return { written: true as const, activityId: activity.id };
+		});
 	},
 });
 

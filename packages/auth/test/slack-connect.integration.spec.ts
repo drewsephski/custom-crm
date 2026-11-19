@@ -7,7 +7,7 @@ import {
 	it,
 } from "bun:test";
 import { db } from "@crm/db";
-import { workspaceSlug } from "@crm/db/workspace";
+import { workspaceSlug } from "@crm/db/workspace-slug";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import {
@@ -20,7 +20,6 @@ import { applySetCookies } from "better-auth/cookies";
 import * as z from "zod";
 import {
 	DEFAULT_WORKSPACE_NAME,
-	WORKSPACE_ID,
 	type WorkspaceRole,
 } from "../src/organization";
 import { GOOGLE_PROVIDER_ID, SLACK_PROVIDER_ID } from "../src/scopes";
@@ -73,6 +72,8 @@ let snapshot: Snapshot;
 
 const idOf = (label: string) => `slack-connect-${suffix}-${label}`;
 
+const WORKSPACE_ID = idOf("org");
+
 const sessionCookie = async (userId: string): Promise<string> => {
 	const context = await guarded.$context;
 	const token = idOf(`${userId}-token`);
@@ -82,6 +83,7 @@ const sessionCookie = async (userId: string): Promise<string> => {
 			id: idOf(`${userId}-session`),
 			token,
 			userId,
+			activeOrganizationId: WORKSPACE_ID,
 			expiresAt: new Date(Date.now() + SESSION_MS),
 			createdAt: new Date(),
 			updatedAt: new Date(),
@@ -191,7 +193,7 @@ beforeEach(async () => {
 		data: {
 			id: WORKSPACE_ID,
 			name: DEFAULT_WORKSPACE_NAME,
-			slug: workspaceSlug(DEFAULT_WORKSPACE_NAME),
+			slug: `${workspaceSlug(DEFAULT_WORKSPACE_NAME)}-${suffix}`,
 			createdAt: new Date(),
 		},
 	});
