@@ -7,6 +7,7 @@ import {
 	templateConfig,
 } from "@crm/validation/workspace-config";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
+import type { AiCapabilityService } from "../src/agent/ai-capability.service";
 import { WorkspaceConfigService } from "../src/workspace-config/workspace-config.service";
 
 const suffix = `${process.env.TEST_RUN_ID ?? "config"}-${Date.now().toString(36)}`;
@@ -28,14 +29,14 @@ const PROFILE: BusinessProfile = {
 
 const requested: string[] = [];
 
-function service(reachable: boolean) {
+function service(canGenerate: boolean) {
 	const agent = {
-		canReachAgent: () => reachable,
 		workspaceConfigRequested: async (versionId: string) => {
 			requested.push(versionId);
 		},
 	} as unknown as AgentTriggerService;
-	return new WorkspaceConfigService(db, agent);
+	const ai = { canGenerate: () => canGenerate } as AiCapabilityService;
+	return new WorkspaceConfigService(db, agent, ai);
 }
 
 beforeAll(async () => {

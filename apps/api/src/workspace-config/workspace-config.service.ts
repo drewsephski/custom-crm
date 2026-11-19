@@ -1,6 +1,5 @@
 import { canConfigureWorkspace, membershipOf } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
-import { isAnthropicConfigured } from "@crm/db/ai-models";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import {
@@ -18,6 +17,7 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { AgentTriggerService } from "../agent/agent-trigger.service";
+import { AiCapabilityService } from "../agent/ai-capability.service";
 import { InjectDatabase } from "../database/database.constants";
 import type {
 	ApplyResult,
@@ -63,6 +63,7 @@ export class WorkspaceConfigService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
+		private readonly ai: AiCapabilityService,
 	) {}
 
 	async state(userId: string) {
@@ -82,7 +83,7 @@ export class WorkspaceConfigService {
 		]);
 
 		return {
-			aiAvailable: isAnthropicConfigured() && this.agent.canReachAgent(),
+			aiAvailable: this.ai.canGenerate(),
 			canConfigure,
 			applied: applied ? toView(applied) : null,
 			proposals: proposals.map(toView),
@@ -94,7 +95,7 @@ export class WorkspaceConfigService {
 		profile: BusinessProfile,
 	): Promise<ConfigVersionView[]> {
 		await this.assertConfigurer(userId);
-		const aiAvailable = isAnthropicConfigured() && this.agent.canReachAgent();
+		const aiAvailable = this.ai.canGenerate();
 
 		const created = await this.db.$transaction(async (tx) => {
 			await lockIdempotencyKey(tx, "workspace-config");
