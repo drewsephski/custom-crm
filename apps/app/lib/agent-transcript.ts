@@ -16,6 +16,7 @@ import {
 	eveToolOutcome,
 	eveToolOutput,
 } from "@crm/validation/eve-tool";
+import { type StageOutcome, stageOutcome } from "@crm/validation/pipeline";
 import type { MessageStreamEvent } from "eve/client";
 import {
 	defaultMessageReducer,
@@ -523,6 +524,7 @@ export type DealListItem = {
 	id: string;
 	name: string;
 	stage: string;
+	stageOutcome: StageOutcome | null;
 	amount: number | null;
 	currency: string;
 	company: {
@@ -567,6 +569,7 @@ const dealListItem = z.object({
 	id: requiredText,
 	name: requiredText,
 	stage: requiredText,
+	stageOutcome: stageOutcome.nullable().catch(null),
 	amount: finiteNumber.nullable(),
 	currency: requiredText,
 	company: z.object({

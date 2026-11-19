@@ -917,7 +917,7 @@ async function describeResources(resources: BuilderResource[]) {
 					select: {
 						id: true,
 						name: true,
-						stage: true,
+						stage: { select: { label: true } },
 						amount: true,
 						currency: true,
 						company: { select: { id: true, name: true } },
@@ -928,6 +928,7 @@ async function describeResources(resources: BuilderResource[]) {
 					record: row
 						? {
 								...row,
+								stage: row.stage.label,
 								amount: row.amount === null ? null : Number(row.amount),
 							}
 						: null,

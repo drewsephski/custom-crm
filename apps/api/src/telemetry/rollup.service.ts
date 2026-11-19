@@ -1,11 +1,11 @@
 import {
 	ActivityType,
 	type Db,
-	DealStage,
 	EnrichmentStatus,
 	FactBand,
 	FactStatus,
 	RecordSource,
+	StageOutcome,
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
 import { configuredAgentModel } from "@crm/db/settings";
@@ -479,7 +479,9 @@ export class RollupService {
 			this.db.activity.count(),
 			this.db.contact.groupBy({ by: ["source"], _count: { _all: true } }),
 			this.db.company.groupBy({ by: ["source"], _count: { _all: true } }),
-			this.db.deal.groupBy({ by: ["stage"], _count: { _all: true } }),
+			this.db.pipelineStage.findMany({
+				select: { outcome: true, _count: { select: { deals: true } } },
+			}),
 			this.db.activity.groupBy({ by: ["type"], _count: { _all: true } }),
 			this.db.mailboxSync.groupBy({ by: ["status"], _count: { _all: true } }),
 			this.db.emailThread.count({ where: { createdAt: { gte: since } } }),
@@ -549,9 +551,14 @@ export class RollupService {
 				})),
 				Object.values(RecordSource),
 			),
-			deals_by_stage: countsOf(
-				stages.map((row) => ({ key: row.stage, count: row._count._all })),
-				Object.values(DealStage),
+			deals_by_outcome: countsOf(
+				Object.values(StageOutcome).map((outcome) => ({
+					key: outcome,
+					count: stages
+						.filter((row) => row.outcome === outcome)
+						.reduce((total, row) => total + row._count.deals, 0),
+				})),
+				Object.values(StageOutcome),
 			),
 			activities_by_type: countsOf(
 				types.map((row) => ({ key: row.type, count: row._count._all })),

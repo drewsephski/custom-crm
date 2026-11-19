@@ -127,6 +127,7 @@ export function DashboardSummary() {
 
 	const mine = scope === "me";
 	const largestOpenCents = biggestOpen[0]?.baseAmountCents ?? 0;
+	const stageOrder = summary.pipeline.stages.map((bucket) => bucket.stage.id);
 
 	return (
 		<div className="flex flex-col gap-6">
@@ -188,7 +189,9 @@ export function DashboardSummary() {
 															100
 														: 0
 												}
-												color={dealStageChartColor(deal.stage)}
+												color={dealStageChartColor(
+													stageOrder.indexOf(deal.stage.id),
+												)}
 											/>
 										</TableCell>
 										<TableCell className={`${CELL} text-right tabular-nums`}>

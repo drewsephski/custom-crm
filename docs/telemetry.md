@@ -154,7 +154,7 @@ sent.
 | --- | --- |
 | `contacts_bucket`, `companies_bucket`, `deals_bucket`, `activities_bucket` | Sizes, in bands |
 | `contacts_by_source`, `companies_by_source` | Counts by `MANUAL` / `IMPORT` / `EMAIL` / `CALENDAR` |
-| `deals_by_stage` | Counts by `DealStage`. Stages, never amounts |
+| `deals_by_outcome` | Counts by `StageOutcome` (`OPEN` / `WON` / `LOST`). Stage names are an agency's own words and are never sent. Never amounts |
 | `activities_by_type` | Counts by `ActivityType` |
 | `mailbox_sync_configured` | Whether any `MailboxSync` row exists |
 | `mailbox_sync_status` | Counts by `GoogleSyncStatus` |

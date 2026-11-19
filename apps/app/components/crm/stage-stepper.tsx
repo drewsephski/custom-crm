@@ -1,30 +1,24 @@
 "use client";
 
-import { DealStage } from "@crm/db/enums";
 import { IndicatorDot } from "@crm/ui/components/status-indicator";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import {
-	dealStageLabel,
-	dealStagePresentation,
-	isClosedStage,
-	OPEN_STAGES,
-} from "@/lib/deal-stage";
+import { isLostStage, type StageLike, stageTone } from "@/lib/deal-stage";
+import { usePipeline } from "@/lib/pipeline";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-
-const RAIL = [...OPEN_STAGES, DealStage.CLOSED_WON] as readonly DealStage[];
 
 export function StageStepper({
 	dealId,
 	stage,
 }: {
 	dealId: string;
-	stage: DealStage;
+	stage: StageLike & { id: string };
 }) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
+	const { stages, openStages } = usePipeline();
 
 	const setStage = useMutation(
 		trpc.deals.setStage.mutationOptions({
@@ -36,22 +30,28 @@ export function StageStepper({
 		}),
 	);
 
-	const exited = isClosedStage(stage) && stage !== DealStage.CLOSED_WON;
-	const steps = exited ? OPEN_STAGES : RAIL;
-	const currentIndex = steps.indexOf(stage);
+	const exited = isLostStage(stage);
+	const won =
+		stage.outcome === "WON"
+			? stages.find((candidate) => candidate.id === stage.id)
+			: stages.find((candidate) => candidate.outcome === "WON");
+	const steps = exited || !won ? openStages : [...openStages, won];
+	const currentIndex = steps.findIndex((step) => step.id === stage.id);
 
 	return (
 		<ol className="flex w-full gap-1">
 			{steps.map((option, index) => {
 				const reached = !exited && index <= currentIndex;
-				const current = !exited && option === stage;
+				const current = !exited && option.id === stage.id;
 				return (
-					<li key={option} className="flex min-w-0 flex-1">
+					<li key={option.id} className="flex min-w-0 flex-1">
 						<button
 							type="button"
 							aria-current={current ? "step" : undefined}
 							disabled={setStage.isPending}
-							onClick={() => setStage.mutate({ id: dealId, stage: option })}
+							onClick={() =>
+								setStage.mutate({ id: dealId, stageId: option.id })
+							}
 							className={cn(
 								"group/step flex min-w-0 flex-1 flex-col gap-2 rounded-xs text-left text-xs outline-none transition-colors focus-visible:shadow-focus disabled:pointer-events-none disabled:opacity-50",
 								reached
@@ -70,10 +70,10 @@ export function StageStepper({
 								)}
 							/>
 							<span className="text-pretty wrap-break-word leading-4">
-								{current && option === DealStage.CLOSED_WON ? (
+								{current && option.outcome === "WON" ? (
 									<StageOutcome stage={stage} />
 								) : (
-									dealStageLabel(option)
+									option.label
 								)}
 							</span>
 						</button>
@@ -93,12 +93,15 @@ export function StageStepper({
 	);
 }
 
-function StageOutcome({ stage }: { stage: DealStage }) {
-	const { label, tone } = dealStagePresentation(stage);
+function StageOutcome({ stage }: { stage: StageLike }) {
 	return (
 		<span className="flex min-w-0 items-baseline gap-1.5">
-			<IndicatorDot tone={tone} aria-hidden="true" className="translate-y-px" />
-			<span className="text-pretty wrap-break-word">{label}</span>
+			<IndicatorDot
+				tone={stageTone(stage)}
+				aria-hidden="true"
+				className="translate-y-px"
+			/>
+			<span className="text-pretty wrap-break-word">{stage.label}</span>
 		</span>
 	);
 }

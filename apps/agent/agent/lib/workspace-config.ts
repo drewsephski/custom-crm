@@ -20,6 +20,8 @@ const SYSTEM = [
 	"Keep labels short and concrete. Use the agency's own words for its services. Do not invent clients, prices, people or facts about the agency.",
 	"The pipeline must contain open stages, exactly the stages a deal really passes through, then at least one won stage and one lost stage.",
 	"Keys are lower_snake_case.",
+	"Every saved view carries a filter, and a view with an empty filter is useless. A deal view filters by status (open or closed) or by stages, which lists stage keys from the pipeline you propose. Never put a stage label in a filter. A contact or company view sets unassigned to true to show records nobody owns. A deal view never sets unassigned.",
+	"Always include three views: a deal view of the open pipeline (status open), a deal view of proposals awaiting a response (stages names the key of the stage where a proposal is out), and a contact view of new or unassigned leads (unassigned true).",
 ].join("\n");
 
 function prompt(profile: ReturnType<typeof parseBusinessProfile>): string {

@@ -1,18 +1,22 @@
 import {
 	ActivityType,
 	type Db,
-	type DealStage,
 	type Prisma,
 	Prisma as PrismaNamespace,
 } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
-import {
-	CLOSED_DEAL_STAGES,
-	isClosedStage,
-	LOSING_DEAL_STAGES,
-	OPEN_DEAL_STAGES,
-} from "@crm/db/deal-stage";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import {
+	CLOSED_DEALS,
+	type DealStageRow,
+	defaultStageOf,
+	ensureActivePipeline,
+	isClosedOutcome,
+	isLostOutcome,
+	OPEN_DEALS,
+	STAGE_SELECT,
+	stageSnapshot,
+} from "@crm/db/pipeline";
 import {
 	BadRequestException,
 	Injectable,
@@ -35,6 +39,7 @@ import {
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
 import { FieldsService } from "../fields/fields.service";
+import { PipelineService } from "../pipeline/pipeline.service";
 import {
 	archivedFilter,
 	countsByKey,
@@ -45,9 +50,12 @@ import {
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
+import { BOARD } from "./deals.config";
 import type {
+	BoardPlacement,
 	ClosingWindow,
 	DealAttachContactInput,
+	DealBoardInput,
 	DealBulkOwnerInput,
 	DealBulkStageInput,
 	DealContactRoleInput,
@@ -85,12 +93,19 @@ const CONTACT_SELECT = {
 	imageUrl: true,
 } as const;
 
-const LOSING = new Set<DealStage>(LOSING_DEAL_STAGES);
+const BOARD_ORDER = [
+	{ boardPosition: "asc" },
+	{ createdAt: "desc" },
+	{ id: "asc" },
+] as const satisfies Prisma.DealOrderByWithRelationInput[];
+
+const LOST_REASON_REQUIRED =
+	"Say why it was lost. A lost deal with no reason teaches nobody anything.";
 
 const SORTABLE: OrderByColumns<Prisma.DealOrderByWithRelationInput[]> = {
 	name: (dir) => [{ name: dir }],
 	company: (dir) => [{ company: { name: dir } }, { name: "asc" }],
-	stage: (dir) => [{ stage: dir }, { expectedCloseDate: "asc" }],
+	stage: (dir) => [{ stage: { position: dir } }, { expectedCloseDate: "asc" }],
 	amount: (dir) => [{ baseAmount: { sort: dir, nulls: "last" } }],
 	expectedCloseDate: (dir) => [{ expectedCloseDate: dir }],
 	createdAt: (dir) => [{ createdAt: dir }],
@@ -109,6 +124,7 @@ export class DealsService {
 		private readonly stamp: ActivityStampService,
 		private readonly conversion: ConversionService,
 		private readonly fields: FieldsService,
+		private readonly pipeline: PipelineService,
 	) {}
 
 	async list(input: DealListInput) {
@@ -116,7 +132,7 @@ export class DealsService {
 		const where = this.buildWhere(input, filterableFields);
 		const { skip, take } = paginate(input);
 
-		const openWhere = { ...where, stage: { in: [...OPEN_DEAL_STAGES] } };
+		const openWhere: Prisma.DealWhereInput = { AND: [where, OPEN_DEALS] };
 		const base = await this.conversion.reportingCurrency();
 
 		const [rows, total, facetCounts, openValue, unconverted] =
@@ -129,7 +145,7 @@ export class DealsService {
 					select: {
 						id: true,
 						name: true,
-						stage: true,
+						stage: { select: STAGE_SELECT },
 						amount: true,
 						currency: true,
 						baseAmount: true,
@@ -199,7 +215,7 @@ export class DealsService {
 				id: true,
 				name: true,
 				description: true,
-				stage: true,
+				stage: { select: STAGE_SELECT },
 				stageChangedAt: true,
 				amount: true,
 				currency: true,
@@ -260,9 +276,91 @@ export class DealsService {
 		};
 	}
 
+	async board(input: DealBoardInput) {
+		const pipeline = await this.pipeline.active();
+		const base = await this.conversion.reportingCurrency();
+		const where = this.boardWhere(input);
+
+		const { counts, sums, columns } = await this.db.$transaction(async (tx) => {
+			const counts = await tx.deal.groupBy({
+				by: ["stageId"],
+				where,
+				_count: { _all: true },
+			});
+			const sums = await tx.deal.groupBy({
+				by: ["stageId"],
+				where: { AND: [where, this.conversion.countedWhere(base)] },
+				_sum: { baseAmount: true },
+			});
+			const columns = [];
+			for (const stage of pipeline.stages) {
+				columns.push(
+					await tx.deal.findMany({
+						where: { AND: [where, { stageId: stage.id }] },
+						orderBy: [...BOARD_ORDER],
+						take: input.limit,
+						select: {
+							id: true,
+							name: true,
+							amount: true,
+							currency: true,
+							baseAmount: true,
+							baseCurrency: true,
+							expectedCloseDate: true,
+							stageChangedAt: true,
+							lastActivityAt: true,
+							company: { select: COMPANY_SELECT },
+							owner: { select: OWNER_SELECT },
+						},
+					}),
+				);
+			}
+			return { counts, sums, columns };
+		});
+
+		const unconverted = await this.conversion.unconverted(where);
+
+		return {
+			columns: pipeline.stages.map((stage, index) => ({
+				stage: {
+					id: stage.id,
+					key: stage.key,
+					label: stage.label,
+					outcome: stage.outcome,
+					position: stage.position,
+					probability: stage.probability,
+				},
+				count: counts.find((row) => row.stageId === stage.id)?._count._all ?? 0,
+				valueCents:
+					toCents(
+						sums.find((row) => row.stageId === stage.id)?._sum.baseAmount ??
+							null,
+					) ?? 0,
+				deals: (columns[index] ?? []).map(
+					({
+						amount,
+						baseAmount,
+						baseCurrency,
+						expectedCloseDate,
+						stageChangedAt,
+						lastActivityAt,
+						...deal
+					}) => ({
+						...deal,
+						amountCents: toCents(amount),
+						baseAmountCents: baseCurrency === base ? toCents(baseAmount) : null,
+						expectedCloseDate: expectedCloseDate?.toISOString() ?? null,
+						stageChangedAt: stageChangedAt.toISOString(),
+						lastActivityAt: lastActivityAt?.toISOString() ?? null,
+					}),
+				),
+			})),
+			reportingCurrency: base,
+			unconverted,
+		};
+	}
+
 	async create(input: DealCreateInput) {
-		const stage = input.stage ?? "DEMO_BOOKED";
-		const closed = isClosedStage(stage);
 		const now = new Date();
 
 		const currency = normalizeCurrency(
@@ -274,40 +372,53 @@ export class DealsService {
 		);
 
 		try {
-			const deal = await this.agent.withCrmEvents(async (tx, emit) => {
-				const created = await tx.deal.create({
-					data: {
-						name: input.name.trim(),
-						companyId: input.companyId,
-						ownerId: input.ownerId,
-						stage,
-						stageChangedAt: now,
-						closedAt: closed ? now : null,
-						amount: fromCents(input.amountCents),
-						currency,
-						...fx,
-						expectedCloseDate: parseDate(input.expectedCloseDate),
-					},
-					select: { id: true, name: true, companyId: true },
-				});
-				await emit({
-					type: "deal.created",
-					record: { kind: "deal", id: created.id },
-					occurredAt: now,
-					data: { companyId: created.companyId, stage },
-				});
-				if (closed) {
+			const { deal, stage } = await this.agent.withCrmEvents(
+				async (tx, emit) => {
+					const stage = await this.stageForCreate(tx, input.stageId);
+					const closed = isClosedOutcome(stage.outcome);
+					const created = await tx.deal.create({
+						data: {
+							name: input.name.trim(),
+							companyId: input.companyId,
+							ownerId: input.ownerId,
+							stageId: stage.id,
+							boardPosition: await this.boardPosition(tx, stage.id, null),
+							stageChangedAt: now,
+							closedAt: closed ? now : null,
+							amount: fromCents(input.amountCents),
+							currency,
+							...fx,
+							expectedCloseDate: parseDate(input.expectedCloseDate),
+						},
+						select: { id: true, name: true, companyId: true },
+					});
 					await emit({
-						type: "deal.closed",
+						type: "deal.created",
 						record: { kind: "deal", id: created.id },
 						occurredAt: now,
-						data: { companyId: created.companyId, from: null, to: stage },
+						data: { companyId: created.companyId, ...stageEventData(stage) },
 					});
-				}
-				return created;
-			});
+					if (closed) {
+						await emit({
+							type: "deal.closed",
+							record: { kind: "deal", id: created.id },
+							occurredAt: now,
+							data: {
+								companyId: created.companyId,
+								...transitionEventData(null, stage),
+							},
+						});
+					}
+					return { deal: created, stage };
+				},
+			);
 
-			this.logger.log({ message: "Deal created", dealId: deal.id, stage });
+			this.logger.log({
+				message: "Deal created",
+				dealId: deal.id,
+				stageId: stage.id,
+				stage: stage.key,
+			});
 
 			void this.fields.queueBackfillForNewRecord("DEAL", deal.id);
 
@@ -482,12 +593,11 @@ export class DealsService {
 
 	async setStage(input: SetStageInput, actingUserId: string) {
 		const closedReason = input.closedReason?.trim();
-		const closed = isClosedStage(input.stage);
 		const transition = await this.agent.withCrmEvents(async (tx, emit) => {
 			const [deal] = await tx.$queryRaw<
-				Array<{ id: string; stage: DealStage; companyId: string }>
+				Array<{ id: string; stageId: string; companyId: string }>
 			>`
-				SELECT id, stage, "companyId"
+				SELECT id, "stageId", "companyId"
 				FROM deal
 				WHERE id = ${input.id}
 				FOR UPDATE
@@ -497,30 +607,67 @@ export class DealsService {
 				throw new NotFoundException(`No deal with id ${input.id}.`);
 			}
 
-			if (deal.stage === input.stage) {
-				return {
-					changed: false as const,
-					deal,
-					updated: { id: deal.id, stage: deal.stage },
-					now: null,
-				};
+			const stages = await tx.pipelineStage.findMany({
+				where: { id: { in: [deal.stageId, input.stageId] } },
+				select: { ...STAGE_SELECT, pipeline: { select: { isActive: true } } },
+			});
+			const from = stages.find((stage) => stage.id === deal.stageId);
+			const to = stages.find((stage) => stage.id === input.stageId);
+
+			if (!from) {
+				throw new Error(`Deal ${deal.id} points at a stage that is gone.`);
 			}
-			if (LOSING.has(input.stage) && !closedReason) {
+			if (!to || !to.pipeline.isActive) {
 				throw new BadRequestException(
-					"Say why it was lost. A closed-lost deal with no reason teaches nobody anything.",
+					"That stage is not in this workspace's pipeline.",
 				);
 			}
 
+			if (from.id === to.id) {
+				if (input.placement) {
+					await tx.deal.update({
+						where: { id: deal.id },
+						data: {
+							boardPosition: await this.boardPosition(
+								tx,
+								to.id,
+								deal.id,
+								input.placement,
+							),
+						},
+						select: { id: true },
+					});
+				}
+				return {
+					changed: false as const,
+					deal,
+					from,
+					to,
+					now: null,
+				};
+			}
+			if (isLostOutcome(to.outcome) && !closedReason) {
+				throw new BadRequestException(LOST_REASON_REQUIRED);
+			}
+
+			const closed = isClosedOutcome(to.outcome);
+			const wasClosed = isClosedOutcome(from.outcome);
 			const now = new Date();
-			const updated = await tx.deal.update({
+			await tx.deal.update({
 				where: { id: input.id },
 				data: {
-					stage: input.stage,
+					stageId: to.id,
+					boardPosition: await this.boardPosition(
+						tx,
+						to.id,
+						deal.id,
+						input.placement,
+					),
 					stageChangedAt: now,
 					closedAt: closed ? now : null,
 					closedReason: closed ? (closedReason ?? null) : null,
 				},
-				select: { id: true, stage: true },
+				select: { id: true },
 			});
 			await tx.activity.create({
 				data: {
@@ -531,59 +678,161 @@ export class DealsService {
 					companyId: deal.companyId,
 					dealId: deal.id,
 					createdById: actingUserId,
-					meta: { from: deal.stage, to: input.stage },
+					meta: { from: stageSnapshot(from), to: stageSnapshot(to) },
 				},
 			});
+			const data = {
+				companyId: deal.companyId,
+				...transitionEventData(from, to),
+			};
 			await emit({
 				type: "deal.stage.changed",
 				record: { kind: "deal", id: deal.id },
 				occurredAt: now,
-				data: { companyId: deal.companyId, from: deal.stage, to: input.stage },
+				data,
 			});
-			if (!isClosedStage(deal.stage) && closed) {
+			if (!wasClosed && closed) {
 				await emit({
 					type: "deal.closed",
 					record: { kind: "deal", id: deal.id },
 					occurredAt: now,
-					data: {
-						companyId: deal.companyId,
-						from: deal.stage,
-						to: input.stage,
-					},
+					data,
 				});
 			}
-			if (isClosedStage(deal.stage) && !closed) {
+			if (wasClosed && !closed) {
 				await emit({
 					type: "deal.opened",
 					record: { kind: "deal", id: deal.id },
 					occurredAt: now,
-					data: {
-						companyId: deal.companyId,
-						from: deal.stage,
-						to: input.stage,
-					},
+					data,
 				});
 			}
 
-			return { changed: true as const, deal, updated, now };
+			return { changed: true as const, deal, from, to, now };
 		});
 
+		const { deal, from, to } = transition;
+		const stage = stageView(to);
+
 		if (!transition.changed) {
-			return { ...transition.updated, changed: false };
+			return { id: deal.id, stage, changed: false };
 		}
 
-		const { deal, updated, now } = transition;
-
-		await this.stamp.touch({ companyId: deal.companyId, dealId: deal.id }, now);
+		await this.stamp.touch(
+			{ companyId: deal.companyId, dealId: deal.id },
+			transition.now,
+		);
 
 		this.logger.log({
 			message: "Deal stage changed",
 			dealId: deal.id,
-			from: deal.stage,
-			to: input.stage,
+			from: from.key,
+			to: to.key,
 		});
 
-		return { ...updated, changed: true };
+		return { id: deal.id, stage, changed: true };
+	}
+
+	private async stageForCreate(
+		tx: Prisma.TransactionClient,
+		stageId: string | undefined,
+	): Promise<DealStageRow> {
+		const pipeline = await ensureActivePipeline(tx);
+		if (!stageId) return defaultStageOf(pipeline);
+
+		const stage = pipeline.stages.find((candidate) => candidate.id === stageId);
+		if (!stage) {
+			throw new BadRequestException(
+				"That stage is not in this workspace's pipeline.",
+			);
+		}
+		return stage;
+	}
+
+	private async boardPosition(
+		tx: Prisma.TransactionClient,
+		stageId: string,
+		dealId: string | null,
+		placement?: BoardPlacement,
+	): Promise<number> {
+		const others: Prisma.DealWhereInput = dealId
+			? { stageId, id: { not: dealId } }
+			: { stageId };
+		const anchorId = placement?.afterId ?? placement?.beforeId ?? null;
+
+		const top = async () => {
+			const first = await tx.deal.aggregate({
+				where: others,
+				_min: { boardPosition: true },
+			});
+			return (
+				(first._min.boardPosition ?? BOARD.position.step) - BOARD.position.step
+			);
+		};
+
+		if (!placement || !anchorId || anchorId === dealId) return top();
+
+		const between = async (): Promise<
+			[number | null, number | null] | null
+		> => {
+			const anchor = await tx.deal.findFirst({
+				where: { AND: [others, { id: anchorId }] },
+				select: { boardPosition: true },
+			});
+			if (!anchor) return null;
+
+			if (placement.afterId) {
+				const next = await tx.deal.aggregate({
+					where: {
+						AND: [others, { boardPosition: { gt: anchor.boardPosition } }],
+					},
+					_min: { boardPosition: true },
+				});
+				return [anchor.boardPosition, next._min.boardPosition];
+			}
+			const previous = await tx.deal.aggregate({
+				where: {
+					AND: [others, { boardPosition: { lt: anchor.boardPosition } }],
+				},
+				_max: { boardPosition: true },
+			});
+			return [previous._max.boardPosition, anchor.boardPosition];
+		};
+
+		const place = (gap: [number | null, number | null]): number | null => {
+			const [lower, upper] = gap;
+			if (lower === null && upper === null) return 0;
+			if (lower === null) return (upper ?? 0) - BOARD.position.step;
+			if (upper === null) return lower + BOARD.position.step;
+			const middle = (lower + upper) / 2;
+			return upper - lower > BOARD.position.minGap &&
+				lower < middle &&
+				middle < upper
+				? middle
+				: null;
+		};
+
+		const gap = await between();
+		if (!gap) return top();
+
+		const placed = place(gap);
+		if (placed !== null) return placed;
+
+		await tx.$executeRaw`
+			UPDATE deal
+			SET "boardPosition" = ranked.position
+			FROM (
+				SELECT id, row_number() OVER (
+					ORDER BY "boardPosition" ASC, "createdAt" DESC, id ASC
+				) * ${BOARD.position.step}::double precision AS position
+				FROM deal
+				WHERE "stageId" = ${stageId} AND id <> ${dealId ?? ""}
+			) ranked
+			WHERE deal.id = ranked.id
+		`;
+
+		const respaced = await between();
+		return (respaced ? place(respaced) : null) ?? (await top());
 	}
 
 	async contactOptions(dealId: string) {
@@ -708,15 +957,22 @@ export class DealsService {
 		actingUserId: string,
 	): Promise<BulkResult> {
 		const closedReason = input.closedReason?.trim();
+		const stage = await this.db.pipelineStage.findFirst({
+			where: { id: input.stageId, pipeline: { isActive: true } },
+			select: { outcome: true },
+		});
 
-		if (LOSING.has(input.stage) && !closedReason) {
+		if (!stage) {
 			throw new BadRequestException(
-				"Say why they were lost. A closed-lost deal with no reason teaches nobody anything.",
+				"That stage is not in this workspace's pipeline.",
 			);
+		}
+		if (isLostOutcome(stage.outcome) && !closedReason) {
+			throw new BadRequestException(LOST_REASON_REQUIRED);
 		}
 
 		return runBulk(input.ids, (id) =>
-			this.setStage({ id, stage: input.stage, closedReason }, actingUserId),
+			this.setStage({ id, stageId: input.stageId, closedReason }, actingUserId),
 		);
 	}
 
@@ -745,6 +1001,16 @@ export class DealsService {
 		return deal.company;
 	}
 
+	private boardWhere(input: DealBoardInput): Prisma.DealWhereInput {
+		const and: Prisma.DealWhereInput[] = [
+			this.searchFilter(input.q),
+			archivedFilter(false),
+		];
+		const owner = ownerFilter<Prisma.DealWhereInput>(input.owner);
+		if (owner) and.push(owner);
+		return { AND: and };
+	}
+
 	private searchFilter(q: string): Prisma.DealWhereInput {
 		const term = q.trim();
 		if (!term) return {};
@@ -771,13 +1037,13 @@ export class DealsService {
 		if (owner) and.push(owner);
 
 		if (input.status === "open") {
-			and.push({ stage: { in: [...OPEN_DEAL_STAGES] } });
+			and.push(OPEN_DEALS);
 		} else if (input.status === "closed") {
-			and.push({ stage: { in: [...CLOSED_DEAL_STAGES] } });
+			and.push(CLOSED_DEALS);
 		}
 
 		if (input.stage.length > 0) {
-			and.push({ stage: { in: input.stage as DealStage[] } });
+			and.push({ stageId: { in: input.stage } });
 		}
 
 		if (input.closing.length > 0) {
@@ -799,24 +1065,33 @@ export class DealsService {
 			AND: [this.searchFilter(input.q), archivedFilter(input.archived)],
 		};
 
-		const [owners, stages, fieldFacets, ...closingCounts] = await Promise.all([
-			this.db.deal.groupBy({ by: ["ownerId"], where, _count: { _all: true } }),
-			this.db.deal.groupBy({ by: ["stage"], where, _count: { _all: true } }),
-			this.fields.filterFacetCounts("DEAL", where, filterableFields),
-			...CLOSING_WINDOWS.map((window) =>
-				this.db.deal.count({ where: { AND: [where, closingFilter(window)] } }),
-			),
-		]);
+		const [owners, stages, openCount, fieldFacets, ...closingCounts] =
+			await Promise.all([
+				this.db.deal.groupBy({
+					by: ["ownerId"],
+					where,
+					_count: { _all: true },
+				}),
+				this.db.deal.groupBy({
+					by: ["stageId"],
+					where,
+					_count: { _all: true },
+				}),
+				this.db.deal.count({ where: { AND: [where, OPEN_DEALS] } }),
+				this.fields.filterFacetCounts("DEAL", where, filterableFields),
+				...CLOSING_WINDOWS.map((window) =>
+					this.db.deal.count({
+						where: { AND: [where, closingFilter(window)] },
+					}),
+				),
+			]);
 
-		const stageCounts = countsByKey(stages, "stage");
-		const openCount = OPEN_DEAL_STAGES.reduce(
-			(total, stage) => total + (stageCounts[stage] ?? 0),
+		const stageCounts = countsByKey(stages, "stageId");
+		const total = Object.values(stageCounts).reduce(
+			(sum, count) => sum + count,
 			0,
 		);
-		const closedCount = CLOSED_DEAL_STAGES.reduce(
-			(total, stage) => total + (stageCounts[stage] ?? 0),
-			0,
-		);
+		const closedCount = total - openCount;
 
 		return {
 			status: { open: openCount, closed: closedCount },
@@ -868,10 +1143,7 @@ function closingFilter(window: ClosingWindow): Prisma.DealWhereInput {
 
 	switch (window) {
 		case "overdue":
-			return {
-				expectedCloseDate: { lt: now },
-				stage: { in: [...OPEN_DEAL_STAGES] },
-			};
+			return { expectedCloseDate: { lt: now }, ...OPEN_DEALS };
 		case "this-month":
 			return {
 				expectedCloseDate: { gte: startOfMonth, lt: startOfNextMonth },
@@ -885,6 +1157,38 @@ function closingFilter(window: ClosingWindow): Prisma.DealWhereInput {
 		case "none":
 			return { expectedCloseDate: null };
 	}
+}
+
+function stageView(stage: DealStageRow): DealStageRow {
+	return {
+		id: stage.id,
+		key: stage.key,
+		label: stage.label,
+		outcome: stage.outcome,
+		position: stage.position,
+		probability: stage.probability,
+	};
+}
+
+function stageEventData(stage: DealStageRow) {
+	return {
+		stage: stage.label,
+		stageKey: stage.key,
+		stageId: stage.id,
+		outcome: stage.outcome,
+	};
+}
+
+function transitionEventData(from: DealStageRow | null, to: DealStageRow) {
+	return {
+		from: from?.label ?? null,
+		to: to.label,
+		fromKey: from?.key ?? null,
+		toKey: to.key,
+		fromStageId: from?.id ?? null,
+		toStageId: to.id,
+		outcome: to.outcome,
+	};
 }
 
 function roleOrNull(value: string | null): string | null {

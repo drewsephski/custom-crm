@@ -1,3 +1,4 @@
+import { DEFAULT_PIPELINE_STAGES } from "@crm/db/pipeline-defaults";
 import { z } from "zod";
 import { parse } from "./index";
 
@@ -63,10 +64,21 @@ export const configField = z
 		message: "A choice field needs at least one option.",
 	});
 
+export const CONFIG_VIEW_STATUSES = ["open", "closed"] as const;
+
+export const configViewFilter = z.object({
+	status: z.enum(CONFIG_VIEW_STATUSES).optional(),
+	stages: z.array(key).max(L.stages.max).default([]),
+	unassigned: z.boolean().default(false),
+});
+
+export type ConfigViewFilter = z.infer<typeof configViewFilter>;
+
 export const configView = z.object({
 	entity: z.enum(["COMPANY", "CONTACT", "DEAL"]),
 	name: label,
 	description: z.string().trim().max(L.text),
+	filter: configViewFilter.default({ stages: [], unassigned: false }),
 });
 
 export const configService = z.object({
@@ -138,6 +150,34 @@ export const workspaceConfig = z
 			config.services.map((service) => service.key),
 			"services",
 		);
+
+		const stageKeys = new Set(config.pipeline.map((stage) => stage.key));
+		config.views.forEach((view, index) => {
+			const { status, stages } = view.filter;
+			if (view.entity === "DEAL" && view.filter.unassigned) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["views", index, "filter", "unassigned"],
+					message: "A deal always has an owner.",
+				});
+			}
+			if (view.entity !== "DEAL" && (status || stages.length > 0)) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["views", index, "filter"],
+					message: "Only a deal view filters by pipeline status or stage.",
+				});
+			}
+			for (const stage of stages) {
+				if (!stageKeys.has(stage)) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["views", index, "filter", "stages"],
+						message: `The view names the stage "${stage}", which is not in the pipeline.`,
+					});
+				}
+			}
+		});
 	});
 
 export type WorkspaceConfig = z.infer<typeof workspaceConfig>;
@@ -150,25 +190,20 @@ export function parseBusinessProfile(value: unknown): BusinessProfile {
 	return parse(businessProfile, value, "business profile");
 }
 
-const BASE_PIPELINE: WorkspaceConfig["pipeline"] = [
-	{ key: "new_inquiry", label: "New Inquiry", outcome: "open", probability: 5 },
-	{ key: "qualified", label: "Qualified", outcome: "open", probability: 20 },
-	{ key: "discovery", label: "Discovery", outcome: "open", probability: 35 },
-	{
-		key: "proposal_sent",
-		label: "Proposal Sent",
-		outcome: "open",
-		probability: 55,
-	},
-	{
-		key: "negotiation",
-		label: "Negotiation",
-		outcome: "open",
-		probability: 75,
-	},
-	{ key: "won", label: "Won", outcome: "won", probability: 100 },
-	{ key: "lost", label: "Lost", outcome: "lost", probability: 0 },
-];
+const CONFIG_OUTCOME = {
+	OPEN: "open",
+	WON: "won",
+	LOST: "lost",
+} as const;
+
+const BASE_PIPELINE: WorkspaceConfig["pipeline"] = DEFAULT_PIPELINE_STAGES.map(
+	(stage) => ({
+		key: stage.key,
+		label: stage.label,
+		outcome: CONFIG_OUTCOME[stage.outcome],
+		probability: stage.probability,
+	}),
+);
 
 const RECURRING_SERVICE =
 	/maintenance|retainer|monthly|support|management|hosting|subscription|ongoing|seo|ads/i;
@@ -297,16 +332,19 @@ export function templateConfig(profile: BusinessProfile): WorkspaceConfig {
 				entity: "DEAL",
 				name: "Open pipeline",
 				description: "Every deal still in play.",
+				filter: { status: "open" },
 			},
 			{
 				entity: "DEAL",
 				name: "Proposals out",
 				description: "Deals waiting on a proposal answer.",
+				filter: { stages: ["proposal_sent"] },
 			},
 			{
 				entity: "CONTACT",
 				name: "New leads",
 				description: "People who reached out and have no owner yet.",
+				filter: { unassigned: true },
 			},
 		],
 		services,

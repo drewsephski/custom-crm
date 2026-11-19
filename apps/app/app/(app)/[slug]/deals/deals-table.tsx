@@ -23,9 +23,10 @@ import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { DealStageMenu } from "@/components/crm/stage-change";
 import { ListEmpty } from "@/components/data-table/list-empty";
 import { ListSearch } from "@/components/data-table/list-search";
+import { SavedViewsMenu } from "@/components/data-table/saved-views-menu";
 import { useTableQuery } from "@/components/data-table/use-table-query";
 import { LocalDay, LocalRelativeTime } from "@/components/local-date-time";
-import { DEAL_STAGE_OPTIONS } from "@/lib/deal-stage";
+import { usePipeline } from "@/lib/pipeline";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { DealsBulkActions } from "./deals-bulk-actions";
@@ -151,7 +152,9 @@ export function DealsTable() {
 	const openRecord = useOpenRecord();
 	const trpc = useTRPC();
 	const prefetchRecord = usePrefetchRecord();
-	const { query, input, setArchived } = useTableQuery(dealsSearchParams);
+	const table = useTableQuery(dealsSearchParams);
+	const { query, input, setArchived } = table;
+	const { stages } = usePipeline();
 
 	const deals = useQuery({
 		...trpc.deals.list.queryOptions(input),
@@ -194,8 +197,10 @@ export function DealsTable() {
 		{
 			id: "stage",
 			label: "Stage",
-			options: DEAL_STAGE_OPTIONS.filter(
-				(option) => (facetCounts?.stage?.[option.value] ?? 0) > 0,
+			options: stages.flatMap((stage) =>
+				(facetCounts?.stage?.[stage.id] ?? 0) > 0
+					? [{ value: stage.id, label: stage.label }]
+					: [],
 			),
 		},
 		{
@@ -231,15 +236,18 @@ export function DealsTable() {
 			query={query}
 			search={<ListSearch placeholder="Search deals…" />}
 			actions={
-				<Button
-					variant={input.archived ? "contrast" : "outline"}
-					aria-pressed={input.archived}
-					className="justify-start sm:justify-center"
-					onClick={() => toggleArchived(!input.archived)}
-				>
-					<ArchiveIcon data-icon="inline-start" />
-					Archived
-				</Button>
+				<>
+					<SavedViewsMenu entity="DEAL" table={table} />
+					<Button
+						variant={input.archived ? "contrast" : "outline"}
+						aria-pressed={input.archived}
+						className="justify-start sm:justify-center"
+						onClick={() => toggleArchived(!input.archived)}
+					>
+						<ArchiveIcon data-icon="inline-start" />
+						Archived
+					</Button>
+				</>
 			}
 			columns={columns}
 			rows={rows}

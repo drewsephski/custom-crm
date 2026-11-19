@@ -3,6 +3,10 @@ import type { Db, Prisma } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { requireOrganizationId, runAsSystem } from "@crm/db/tenancy";
 import {
+	parseSavedViewFilters,
+	type SavedViewFilters,
+} from "@crm/validation/saved-view";
+import {
 	type BusinessProfile,
 	parseBusinessProfile,
 	parseWorkspaceConfig,
@@ -19,7 +23,11 @@ import {
 import { AgentTriggerService } from "../agent/agent-trigger.service";
 import { AiCapabilityService } from "../agent/ai-capability.service";
 import { InjectDatabase } from "../database/database.constants";
+import type { PipelinePlan } from "../pipeline/pipeline.contracts";
+import { PipelineService } from "../pipeline/pipeline.service";
+import { FACET_UNASSIGNED } from "../trpc/list-input";
 import type {
+	ApplyInput,
 	ApplyResult,
 	ConfigVersionView,
 } from "./workspace-config.contracts";
@@ -41,6 +49,52 @@ type VersionRow = Prisma.WorkspaceConfigVersionGetPayload<{
 }>;
 
 const PROPOSAL_HISTORY = 5;
+
+const NOTHING_APPLIED = {
+	fieldsCreated: 0,
+	fieldsKept: 0,
+	viewsCreated: 0,
+	viewsUpdated: 0,
+	viewsKept: 0,
+	stagesCreated: 0,
+	stagesUpdated: 0,
+	stagesRemoved: 0,
+	dealsMoved: 0,
+} as const;
+
+type ConfigView = WorkspaceConfig["views"][number];
+
+function viewFilters(
+	view: ConfigView,
+	stageIds: Map<string, string>,
+): SavedViewFilters {
+	const filters: Record<string, string[]> = {};
+	const { status, stages, unassigned } = view.filter;
+
+	if (view.entity === "DEAL") {
+		if (status) filters.status = [status];
+		const ids = stages.flatMap((key) => {
+			const id = stageIds.get(key);
+			return id ? [id] : [];
+		});
+		if (ids.length > 0) filters.stage = ids;
+	}
+	if (unassigned && view.entity !== "DEAL") {
+		filters.owner = [FACET_UNASSIGNED];
+	}
+
+	return parseSavedViewFilters(
+		unassigned ? { filters, sort: "createdAt", dir: "desc" } : { filters },
+	);
+}
+
+function isUnfiltered(view: SavedViewFilters): boolean {
+	return (
+		view.q === "" &&
+		!view.archived &&
+		Object.values(view.filters).every((selected) => selected.length === 0)
+	);
+}
 
 function toView(row: VersionRow): ConfigVersionView {
 	return {
@@ -64,6 +118,7 @@ export class WorkspaceConfigService {
 		@InjectDatabase() private readonly db: Db,
 		private readonly agent: AgentTriggerService,
 		private readonly ai: AiCapabilityService,
+		private readonly pipelines: PipelineService,
 	) {}
 
 	async state(userId: string) {
@@ -82,10 +137,20 @@ export class WorkspaceConfigService {
 			this.canConfigure(userId),
 		]);
 
+		const appliedView = applied ? toView(applied) : null;
+		const pipelineInSync = appliedView?.config
+			? (
+					await this.db.$transaction((tx) =>
+						this.pipelines.plan(tx, appliedView.config?.pipeline ?? []),
+					)
+				).inSync
+			: true;
+
 		return {
 			aiAvailable: this.ai.canGenerate(),
 			canConfigure,
-			applied: applied ? toView(applied) : null,
+			pipelineInSync,
+			applied: appliedView,
 			proposals: proposals.map(toView),
 		};
 	}
@@ -167,10 +232,24 @@ export class WorkspaceConfigService {
 		return toView(await this.read(versionId));
 	}
 
-	async apply(userId: string, versionId: string): Promise<ApplyResult> {
+	async pipelinePlan(versionId: string): Promise<PipelinePlan> {
+		const version = await this.read(versionId);
+		if (version.config === null) {
+			throw new BadRequestException("That proposal has no configuration yet.");
+		}
+		const config = parseWorkspaceConfig(version.config);
+		return this.db.$transaction((tx) =>
+			this.pipelines.plan(tx, config.pipeline),
+		);
+	}
+
+	async apply(userId: string, input: ApplyInput): Promise<ApplyResult> {
 		await this.assertConfigurer(userId);
+		const { versionId } = input;
 
 		const result = await this.db.$transaction(async (tx) => {
+			await lockIdempotencyKey(tx, "workspace-config");
+
 			const [locked] = await tx.$queryRaw<{ id: string; status: string }[]>`
 				SELECT id, status::text AS status FROM "workspaceConfigVersion"
 				WHERE id = ${versionId}
@@ -179,17 +258,7 @@ export class WorkspaceConfigService {
 
 			if (!locked) throw new NotFoundException("That proposal does not exist.");
 
-			if (locked.status === "APPLIED") {
-				return {
-					fieldsCreated: 0,
-					fieldsKept: 0,
-					viewsCreated: 0,
-					viewsKept: 0,
-					alreadyApplied: true,
-				};
-			}
-
-			if (locked.status !== "PROPOSED") {
+			if (locked.status !== "PROPOSED" && locked.status !== "APPLIED") {
 				throw new BadRequestException(
 					"Only a finished proposal can be applied.",
 				);
@@ -205,24 +274,52 @@ export class WorkspaceConfigService {
 				);
 			}
 			const config = parseWorkspaceConfig(row.config);
+			const reapplied = locked.status === "APPLIED";
 
+			if (reapplied) {
+				const plan = await this.pipelines.plan(tx, config.pipeline);
+				if (plan.inSync) return { ...NOTHING_APPLIED, alreadyApplied: true };
+			}
+
+			const pipeline = await this.pipelines.apply(
+				tx,
+				config.pipeline,
+				input.stageMapping,
+				userId,
+			);
 			const fields = await this.applyFields(tx, config);
-			const views = await this.applyViews(tx, config, userId);
+			const views = await this.applyViews(
+				tx,
+				config,
+				userId,
+				pipeline.stageIds,
+			);
 
-			await tx.workspaceConfigVersion.updateMany({
-				where: { status: "APPLIED" },
-				data: { status: "SUPERSEDED" },
-			});
-			await tx.workspaceConfigVersion.update({
-				where: { id: versionId },
-				data: { status: "APPLIED", appliedAt: new Date(), appliedById: userId },
-			});
+			if (!reapplied) {
+				await tx.workspaceConfigVersion.updateMany({
+					where: { status: "APPLIED" },
+					data: { status: "SUPERSEDED" },
+				});
+				await tx.workspaceConfigVersion.update({
+					where: { id: versionId },
+					data: {
+						status: "APPLIED",
+						appliedAt: new Date(),
+						appliedById: userId,
+					},
+				});
+			}
 
 			return {
 				fieldsCreated: fields.created,
 				fieldsKept: fields.kept,
 				viewsCreated: views.created,
+				viewsUpdated: views.updated,
 				viewsKept: views.kept,
+				stagesCreated: pipeline.stagesCreated,
+				stagesUpdated: pipeline.stagesUpdated,
+				stagesRemoved: pipeline.stagesRemoved,
+				dealsMoved: pipeline.dealsMoved,
 				alreadyApplied: false,
 			};
 		});
@@ -295,17 +392,33 @@ export class WorkspaceConfigService {
 		tx: Prisma.TransactionClient,
 		config: WorkspaceConfig,
 		userId: string,
-	): Promise<{ created: number; kept: number }> {
+		stageIds: Map<string, string>,
+	): Promise<{ created: number; updated: number; kept: number }> {
 		let created = 0;
+		let updated = 0;
 		let kept = 0;
 
 		for (const view of config.views) {
+			const filters = viewFilters(view, stageIds);
 			const existing = await tx.savedView.findFirst({
 				where: { entity: view.entity, name: view.name, shared: true },
-				select: { id: true },
+				select: { id: true, filters: true },
 			});
 
 			if (existing) {
+				if (isUnfiltered(parseSavedViewFilters(existing.filters))) {
+					if (isUnfiltered(filters)) {
+						kept += 1;
+						continue;
+					}
+					await tx.savedView.update({
+						where: { id: existing.id },
+						data: { filters },
+						select: { id: true },
+					});
+					updated += 1;
+					continue;
+				}
 				kept += 1;
 				continue;
 			}
@@ -315,14 +428,14 @@ export class WorkspaceConfigService {
 					entity: view.entity,
 					name: view.name,
 					shared: true,
-					filters: {},
+					filters,
 					ownerId: userId,
 				},
 			});
 			created += 1;
 		}
 
-		return { created, kept };
+		return { created, updated, kept };
 	}
 
 	private async read(versionId: string): Promise<VersionRow> {

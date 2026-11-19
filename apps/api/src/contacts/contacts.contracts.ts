@@ -1,11 +1,6 @@
-import {
-	DealStage,
-	EnrichmentStatus,
-	FactBand,
-	FactStatus,
-	RecordSource,
-} from "@crm/db";
+import { EnrichmentStatus, FactBand, FactStatus, RecordSource } from "@crm/db";
 import { FIELD_ENTITIES, FIELD_TYPES } from "@crm/db/fields";
+import { dealStage } from "@crm/validation/pipeline";
 import { z } from "zod";
 import { bulkIdsInput } from "../crm/bulk";
 import { recordFieldValues } from "../fields/fields.contracts";
@@ -215,7 +210,7 @@ const contactRelationshipOutput = z.object({
 const contactDealOutput = z.object({
 	id: z.string(),
 	name: z.string(),
-	stage: z.enum(Object.values(DealStage) as [DealStage, ...DealStage[]]),
+	stage: dealStage,
 	currency: z.string(),
 	expectedCloseDate: z.string().nullable(),
 	owner: contactOwnerOutput,

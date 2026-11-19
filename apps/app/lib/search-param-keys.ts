@@ -20,12 +20,16 @@ export const SEARCH_PARAM = {
 	},
 	dialog: {
 		create: "new",
+		createStage: "newStage",
 		switcher: "k",
 		closeDeal: "closeDeal",
 		closeStage: "closeStage",
 	},
 	overview: {
 		scope: "scope",
+	},
+	deals: {
+		view: "view",
 	},
 } as const;
 

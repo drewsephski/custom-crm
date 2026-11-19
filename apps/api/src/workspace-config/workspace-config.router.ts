@@ -8,6 +8,7 @@ import {
 	UseMiddlewares,
 } from "nestjs-trpc";
 import { z } from "zod";
+import { pipelinePlanOutput } from "../pipeline/pipeline.contracts";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
@@ -17,6 +18,7 @@ import {
 	configStateOutput,
 	configVersionOutput,
 	editInput,
+	planInput,
 	proposeInput,
 } from "./workspace-config.contracts";
 import { WorkspaceConfigService } from "./workspace-config.service";
@@ -63,6 +65,17 @@ export class WorkspaceConfigRouter {
 		return this.configs.edit(ctx.user.id, input.versionId, input.config);
 	}
 
+	@Query({
+		input: planInput,
+		output: pipelinePlanOutput,
+		meta: restMeta("GET", "/workspace/config/proposals/{versionId}/pipeline", [
+			"Workspace",
+		]),
+	})
+	async pipelinePlan(@Input() input: z.infer<typeof planInput>) {
+		return this.configs.pipelinePlan(input.versionId);
+	}
+
 	@Mutation({
 		input: applyInput,
 		output: applyOutput,
@@ -74,6 +87,6 @@ export class WorkspaceConfigRouter {
 		@Ctx() ctx: AuthedTrpcContext,
 		@Input() input: z.infer<typeof applyInput>,
 	) {
-		return this.configs.apply(ctx.user.id, input.versionId);
+		return this.configs.apply(ctx.user.id, input);
 	}
 }

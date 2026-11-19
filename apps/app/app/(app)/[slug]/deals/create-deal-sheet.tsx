@@ -34,12 +34,12 @@ import {
 import { Spinner } from "@crm/ui/components/spinner";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { PlusIcon } from "lucide-react";
-import { parseAsBoolean, useQueryState } from "nuqs";
+import { parseAsBoolean, parseAsString, useQueryState } from "nuqs";
 import { type ComponentProps, Suspense, useId, useState } from "react";
 import { toast } from "sonner";
 import { CompanyPicker } from "@/components/crm/company-picker";
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
-import { dealStageLabel, OPEN_STAGES } from "@/lib/deal-stage";
+import { usePipeline } from "@/lib/pipeline";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -76,7 +76,15 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 	const [name, setName] = useState("");
 	const [company, setCompany] = useState(companyId ?? UNSET);
 	const [ownerId, setOwnerId] = useState(UNSET);
-	const [stage, setStage] = useState<string>("DEMO_BOOKED");
+	const [startStage, setStartStage] = useQueryState(
+		SEARCH_PARAM.dialog.createStage,
+		parseAsString,
+	);
+	const [stage, setStage] = useState(UNSET);
+	const { openStages, defaultStage } = usePipeline();
+	const requestedStage = openStages.find((option) => option.id === startStage);
+	const resolvedStage =
+		stage || requestedStage?.id || defaultStage?.id || UNSET;
 	const [amount, setAmount] = useState("");
 	const [currency, setCurrency] = useState("");
 	const [closeDate, setCloseDate] = useState("");
@@ -98,7 +106,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 			onSuccess: async (deal) => {
 				await cache.deal(deal.id);
 				toast.success(`${deal.name} added.`);
-				await setOpen(null);
+				await Promise.all([setOpen(null), setStartStage(null)]);
 				reset();
 				openRecord({ kind: "deal", id: deal.id });
 			},
@@ -111,7 +119,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 		setName("");
 		setCompany(companyId ?? UNSET);
 		setOwnerId(UNSET);
-		setStage("DEMO_BOOKED");
+		setStage(UNSET);
 		setAmount("");
 		setCurrency("");
 		setCloseDate("");
@@ -123,7 +131,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 				name !== "" ||
 				company !== (companyId ?? UNSET) ||
 				(ownerId !== UNSET && ownerId !== me.data?.id) ||
-				stage !== "DEMO_BOOKED" ||
+				(stage !== UNSET && stage !== (requestedStage ?? defaultStage)?.id) ||
 				amount !== "" ||
 				(currency !== "" && currency !== (workspaceCurrency || "USD")) ||
 				closeDate !== ""
@@ -131,7 +139,10 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 			pending={create.isPending}
 			onDiscard={reset}
 			open={open}
-			onOpenChange={(next) => setOpen(next || null)}
+			onOpenChange={(next) => {
+				void setOpen(next || null);
+				if (!next) void setStartStage(null);
+			}}
 		>
 			<SheetTrigger asChild>
 				<AddButton />
@@ -161,7 +172,7 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 							name,
 							companyId: company,
 							ownerId: resolvedOwner,
-							stage: stage as never,
+							stageId: resolvedStage || undefined,
 							amountCents: Number.isFinite(parsed)
 								? Math.round(parsed * 100)
 								: null,
@@ -246,14 +257,14 @@ function CreateDealForm({ companyId }: { companyId?: string }) {
 
 					<Field>
 						<FieldLabel htmlFor="create-deal-stage">Stage</FieldLabel>
-						<Select value={stage} onValueChange={setStage}>
+						<Select value={resolvedStage} onValueChange={setStage}>
 							<SelectTrigger id="create-deal-stage">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{OPEN_STAGES.map((value) => (
-									<SelectItem key={value} value={value}>
-										{dealStageLabel(value)}
+								{openStages.map((option) => (
+									<SelectItem key={option.id} value={option.id}>
+										{option.label}
 									</SelectItem>
 								))}
 							</SelectContent>

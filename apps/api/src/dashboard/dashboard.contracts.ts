@@ -1,5 +1,6 @@
-import { ActivityType, DealStage } from "@crm/db";
+import { ActivityType } from "@crm/db";
 import { activityMeta } from "@crm/validation/activity-meta";
+import { dealStage } from "@crm/validation/pipeline";
 import { z } from "zod";
 
 const DASHBOARD_SCOPES = ["me", "everyone"] as const;
@@ -9,10 +10,6 @@ export const dashboardSummaryInput = z.object({
 });
 
 export type DashboardSummaryInput = z.infer<typeof dashboardSummaryInput>;
-
-const stageEnum = z.enum(
-	Object.values(DealStage) as [DealStage, ...DealStage[]],
-);
 
 const ownerOutput = z.object({
 	id: z.string(),
@@ -37,7 +34,7 @@ const monthlyTotalOutput = z.object({
 });
 
 const stageBucketOutput = z.object({
-	stage: stageEnum,
+	stage: dealStage,
 	count: z.number(),
 	valueCents: z.number(),
 });
@@ -56,7 +53,7 @@ const unconvertedOutput = z.object({
 const biggestOpenDealOutput = z.object({
 	id: z.string(),
 	name: z.string(),
-	stage: stageEnum,
+	stage: dealStage,
 	currency: z.string(),
 	company: companyBriefOutput,
 	owner: ownerOutput,

@@ -8,6 +8,7 @@ import {
 } from "@crm/validation/workspace-config";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import type { AiCapabilityService } from "../src/agent/ai-capability.service";
+import { PipelineService } from "../src/pipeline/pipeline.service";
 import { WorkspaceConfigService } from "../src/workspace-config/workspace-config.service";
 
 const suffix = `${process.env.TEST_RUN_ID ?? "config"}-${Date.now().toString(36)}`;
@@ -36,7 +37,7 @@ function service(canGenerate: boolean) {
 		},
 	} as unknown as AgentTriggerService;
 	const ai = { canGenerate: () => canGenerate } as AiCapabilityService;
-	return new WorkspaceConfigService(db, agent, ai);
+	return new WorkspaceConfigService(db, agent, ai, new PipelineService(db));
 }
 
 beforeAll(async () => {
@@ -175,13 +176,18 @@ describe("proposing and applying a configuration", () => {
 
 	it("does not let a member apply it", async () => {
 		await expect(
-			runInTenant(NORTHSTAR, () => service(false).apply(MEMBER, proposalId)),
+			runInTenant(NORTHSTAR, () =>
+				service(false).apply(MEMBER, {
+					versionId: proposalId,
+					stageMapping: {},
+				}),
+			),
 		).rejects.toThrow("Only an owner or an admin");
 	});
 
 	it("creates working fields and views when applied", async () => {
 		const result = await runInTenant(NORTHSTAR, () =>
-			service(false).apply(OWNER, proposalId),
+			service(false).apply(OWNER, { versionId: proposalId, stageMapping: {} }),
 		);
 
 		expect(result.alreadyApplied).toBe(false);
@@ -201,7 +207,7 @@ describe("proposing and applying a configuration", () => {
 
 	it("creates nothing twice when the same apply arrives again", async () => {
 		const again = await runInTenant(NORTHSTAR, () =>
-			service(false).apply(OWNER, proposalId),
+			service(false).apply(OWNER, { versionId: proposalId, stageMapping: {} }),
 		);
 		expect(again.alreadyApplied).toBe(true);
 
@@ -222,7 +228,7 @@ describe("proposing and applying a configuration", () => {
 		if (!next) throw new Error("No proposal.");
 
 		const result = await runInTenant(NORTHSTAR, () =>
-			service(false).apply(OWNER, next.id),
+			service(false).apply(OWNER, { versionId: next.id, stageMapping: {} }),
 		);
 		expect(result.fieldsCreated).toBe(0);
 		expect(result.fieldsKept).toBe(6);
@@ -257,7 +263,12 @@ describe("proposing and applying a configuration", () => {
 		expect(state.proposals).toEqual([]);
 
 		await expect(
-			runInTenant(HARBOR, () => service(false).apply(HARBOR_OWNER, proposalId)),
+			runInTenant(HARBOR, () =>
+				service(false).apply(HARBOR_OWNER, {
+					versionId: proposalId,
+					stageMapping: {},
+				}),
+			),
 		).rejects.toThrow("does not exist");
 	});
 });

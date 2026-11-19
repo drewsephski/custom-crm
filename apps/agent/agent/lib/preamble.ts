@@ -92,7 +92,13 @@ export async function contactPreamble(
 				take: 5,
 				select: {
 					role: true,
-					deal: { select: { id: true, name: true, stage: true } },
+					deal: {
+						select: {
+							id: true,
+							name: true,
+							stage: { select: { label: true } },
+						},
+					},
 				},
 			},
 			_count: { select: { emailThreads: true, calendarEvents: true } },
@@ -113,7 +119,7 @@ export async function contactPreamble(
 	const deals = contact.deals
 		.map(
 			({ role, deal }) =>
-				`${deal.name} (${deal.stage}${role ? `, ${role}` : ""}) \`${deal.id}\``,
+				`${deal.name} (${deal.stage.label}${role ? `, ${role}` : ""}) \`${deal.id}\``,
 		)
 		.join("; ");
 
@@ -179,7 +185,7 @@ export async function companyPreamble(
 			deals: {
 				orderBy: [{ lastActivityAt: "desc" }, { createdAt: "desc" }],
 				take: 8,
-				select: { id: true, name: true, stage: true },
+				select: { id: true, name: true, stage: { select: { label: true } } },
 			},
 			_count: { select: { contacts: true } },
 		},
@@ -204,7 +210,7 @@ export async function companyPreamble(
 			: "";
 
 	const deals = company.deals
-		.map((deal) => `${deal.name} (${deal.stage}) \`${deal.id}\``)
+		.map((deal) => `${deal.name} (${deal.stage.label}) \`${deal.id}\``)
 		.join("; ");
 
 	const markdown = [
@@ -248,7 +254,7 @@ export async function dealPreamble(
 		select: {
 			name: true,
 			description: true,
-			stage: true,
+			stage: { select: { label: true, outcome: true } },
 			amount: true,
 			currency: true,
 			expectedCloseDate: true,
@@ -286,7 +292,7 @@ export async function dealPreamble(
 		} — deal id \`${dealId}\`${
 			deal.company ? `, company id \`${deal.company.id}\`` : ""
 		}.`,
-		`Stage: **${deal.stage}**${
+		`Stage: **${deal.stage.label}** (${deal.stage.outcome.toLowerCase()})${
 			deal.amount
 				? `. Amount: ${deal.amount} ${deal.currency ?? ""}`.trim()
 				: ""

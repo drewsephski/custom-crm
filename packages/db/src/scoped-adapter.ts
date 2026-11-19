@@ -66,7 +66,12 @@ async function inOwnTransaction<T>(
 		await abandon(tx);
 		throw error;
 	}
-	await tx.executeRaw(control("COMMIT"));
+	try {
+		await tx.executeRaw(control("COMMIT"));
+	} catch (error) {
+		await abandon(tx);
+		throw error;
+	}
 	await tx.commit();
 	return result;
 }

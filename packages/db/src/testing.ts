@@ -1,6 +1,7 @@
 import "@crm/env/load";
 
-import { runAsSystem, useTestFallbackTenant } from "./tenancy";
+import type { ActivePipeline } from "./pipeline";
+import { runAsSystem, runInTenant, useTestFallbackTenant } from "./tenancy";
 
 export const TEST_ORGANIZATION = {
 	id: "test-workspace",
@@ -25,7 +26,28 @@ export async function ensureTestOrganization(
 			update: {},
 		});
 	});
+	await ensureTestPipeline(organization.id);
 	return organization.id;
+}
+
+export async function ensureTestPipeline(
+	organizationId: string,
+): Promise<ActivePipeline> {
+	const { db } = await import("./client");
+	const { ensureActivePipeline } = await import("./pipeline");
+
+	return runInTenant(organizationId, () =>
+		db.$transaction((tx) => ensureActivePipeline(tx)),
+	);
+}
+
+export async function testStageIds(
+	organizationId: string,
+): Promise<Record<string, string>> {
+	const pipeline = await ensureTestPipeline(organizationId);
+	return Object.fromEntries(
+		pipeline.stages.map((stage) => [stage.key, stage.id]),
+	);
 }
 
 export async function scopeTestsToTestOrganization(): Promise<void> {

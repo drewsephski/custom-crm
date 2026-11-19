@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -10,6 +11,7 @@ import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { PipelineService } from "../src/pipeline/pipeline.service";
 import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "bulk-spec";
@@ -48,7 +50,16 @@ const companies = new CompaniesService(
 	conversion,
 	fields,
 );
-const deals = new DealsService(db, agent, stamp, conversion, fields);
+const deals = new DealsService(
+	db,
+	agent,
+	stamp,
+	conversion,
+	fields,
+	new PipelineService(db),
+);
+
+let stages: Record<string, string> = {};
 
 let companyId: string;
 
@@ -69,6 +80,7 @@ async function clean() {
 }
 
 beforeAll(async () => {
+	stages = await testStageIds(TEST_ORGANIZATION.id);
 	await clean();
 
 	await db.user.createMany({
@@ -242,7 +254,7 @@ describe("moving a selection of deals to a stage", () => {
 		let refused: Error | null = null;
 		try {
 			await deals.bulkSetStage(
-				{ ids: [deal.id], stage: "CLOSED_LOST" },
+				{ ids: [deal.id], stageId: stages.lost ?? "" },
 				ownerId,
 			);
 		} catch (cause) {
@@ -253,9 +265,9 @@ describe("moving a selection of deals to a stage", () => {
 		expect(
 			await db.deal.findUnique({
 				where: { id: deal.id },
-				select: { stage: true },
+				select: { stageId: true },
 			}),
-		).toEqual({ stage: "DEMO_BOOKED" });
+		).toEqual({ stageId: stages.new_inquiry ?? "" });
 	});
 
 	it("writes the one reason onto every deal's timeline", async () => {
@@ -274,7 +286,7 @@ describe("moving a selection of deals to a stage", () => {
 			await deals.bulkSetStage(
 				{
 					ids: [first.id, second.id],
-					stage: "CLOSED_LOST",
+					stageId: stages.lost ?? "",
 					closedReason: "Budget pulled",
 				},
 				ownerId,
@@ -289,10 +301,10 @@ describe("moving a selection of deals to a stage", () => {
 
 		const closed = await db.deal.findMany({
 			where: { id: { in: [first.id, second.id] } },
-			select: { stage: true, closedReason: true, closedAt: true },
+			select: { stageId: true, closedReason: true, closedAt: true },
 		});
 
-		expect(closed.every((deal) => deal.stage === "CLOSED_LOST")).toBe(true);
+		expect(closed.every((deal) => deal.stageId === stages.lost)).toBe(true);
 		expect(closed.every((deal) => deal.closedReason === "Budget pulled")).toBe(
 			true,
 		);

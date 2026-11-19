@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DealStage, db } from "@crm/db";
+import { db } from "@crm/db";
+import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
 import {
 	companyPreamble,
 	composeClosing,
@@ -10,6 +11,8 @@ import {
 	workspacePreamble,
 } from "../agent/lib/preamble";
 import { identity } from "../agent/lib/workspace";
+
+const stages = await testStageIds(TEST_ORGANIZATION.id);
 
 const suffix = process.env.TEST_RUN_ID ?? "preamble-spec";
 const domain = `fernhill-${suffix}.test`;
@@ -74,7 +77,7 @@ beforeAll(async () => {
 			name: `Fernhill platform ${suffix}`,
 			companyId,
 			ownerId: user.id,
-			stage: DealStage.CONTRACT_SENT,
+			stageId: stages.negotiation,
 			amount: 48_000,
 			contacts: { create: [{ contactId: paulaId, role: "Champion" }] },
 		},
@@ -116,7 +119,7 @@ describe("companyPreamble", () => {
 		const { markdown, focus } = await companyPreamble(companyId, rep);
 
 		expect(markdown).toContain(`company id \`${companyId}\``);
-		expect(markdown).toContain(`(CONTRACT_SENT) \`${dealId}\``);
+		expect(markdown).toContain(`(Negotiation) \`${dealId}\``);
 		expect(focus).toEqual({ companyId });
 	});
 
@@ -138,7 +141,7 @@ describe("contactPreamble", () => {
 	it("lists the deals they are on", async () => {
 		const { markdown } = await contactPreamble(paulaId, rep);
 
-		expect(markdown).toContain(`(CONTRACT_SENT, Champion) \`${dealId}\``);
+		expect(markdown).toContain(`(Negotiation, Champion) \`${dealId}\``);
 	});
 
 	it("offers a way out when they have no company", async () => {
