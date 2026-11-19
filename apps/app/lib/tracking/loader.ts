@@ -4,7 +4,7 @@ if(!s||!s.src)return;
 var u;
 try{u=new URL(s.src)}catch(e){return}
 var site=s.getAttribute("data-site")||u.searchParams.get("site");
-if(!site||!/^cmp_[0-9a-f]{8}$/.test(site))return;
+if(!site||!/^cmp_([0-9a-f]{8}|[0-9a-f]{32})$/.test(site))return;
 var id="crm-tracker-"+site;
 if(document.getElementById(id))return;
 var t=document.createElement("script");

@@ -1,3 +1,4 @@
+import { workspaceAuthor } from "@crm/auth/organization";
 import { ActivityType, type Db } from "@crm/db";
 import type { ActivityMetaFields } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
@@ -46,23 +47,23 @@ export class EnrichmentLogService {
 	}
 
 	private async authorFor(event: EnrichmentEvent): Promise<string | null> {
-		if (event.contactId) {
-			const contact = await this.db.contact.findUnique({
-				where: { id: event.contactId },
-				select: { ownerId: true },
-			});
-			if (contact?.ownerId) return contact.ownerId;
-		}
+		const contact = event.contactId
+			? await this.db.contact.findUnique({
+					where: { id: event.contactId },
+					select: { ownerId: true },
+				})
+			: null;
+		const company =
+			!contact?.ownerId && event.companyId
+				? await this.db.company.findUnique({
+						where: { id: event.companyId },
+						select: { ownerId: true },
+					})
+				: null;
 
-		if (event.companyId) {
-			const company = await this.db.company.findUnique({
-				where: { id: event.companyId },
-				select: { ownerId: true },
-			});
-			if (company?.ownerId) return company.ownerId;
-		}
-
-		const anyUser = await this.db.user.findFirst({ select: { id: true } });
-		return anyUser?.id ?? null;
+		return workspaceAuthor(
+			contact?.ownerId ?? company?.ownerId ?? null,
+			this.db,
+		);
 	}
 }

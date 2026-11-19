@@ -18,7 +18,11 @@ export default defineTool({
 	}),
 	async execute(input, ctx) {
 		return inSessionTenant(ctx, async () => {
-			return stageRunResult(requireTeamAgentAttribute(ctx, "runId"), input);
+			const staged = await stageRunResult(
+				requireTeamAgentAttribute(ctx, "runId"),
+				input,
+			);
+			return { runId: staged.id, recorded: true, finishesWhenTurnEnds: true };
 		});
 	},
 });

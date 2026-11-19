@@ -1,3 +1,4 @@
+import { workspaceAuthor } from "@crm/auth/organization";
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
 import { domainOf, isDerivedName } from "./names";
 import type { Person } from "./socials";
@@ -357,10 +358,7 @@ export async function writeTimelineNote(
 	});
 	if (!contact) return null;
 
-	const author =
-		contact.ownerId ??
-		(await db.user.findFirst({ select: { id: true } }))?.id ??
-		null;
+	const author = await workspaceAuthor(contact.ownerId);
 	if (!author) return null;
 
 	const activity = await db.activity.create({

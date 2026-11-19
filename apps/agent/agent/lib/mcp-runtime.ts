@@ -80,24 +80,104 @@ export function mcpModelOutput(output: Prisma.JsonValue) {
 	};
 }
 
+export type RunMcpGrant = {
+	organizationId: string;
+	platformSlug: string;
+	connectionId: string;
+	toolName: string;
+	description: string;
+	inputSchema: z.infer<typeof mcpToolArguments>;
+};
+
+export async function runMcpGrants(runId: string): Promise<RunMcpGrant[]> {
+	const organizationId = requireOrganizationId();
+	const run = await db.agentRun.findUnique({
+		where: { id: runId },
+		select: { status: true, version: { select: { manifest: true } } },
+	});
+	if (run?.status !== "RUNNING") return [];
+	const manifest = parseAgentManifest(run.version.manifest);
+	if (manifest.mcp.length === 0) return [];
+
+	const connections = await db.mcpConnection.findMany({
+		where: {
+			organizationId,
+			platformSlug: { in: manifest.mcp.map((grant) => grant.platformSlug) },
+			status: "CONNECTED",
+		},
+		select: {
+			id: true,
+			platformSlug: true,
+			accessMode: true,
+			toolSnapshots: {
+				where: { reviewState: "REVIEWED" },
+				select: {
+					name: true,
+					description: true,
+					inputSchema: true,
+					fingerprint: true,
+				},
+			},
+		},
+	});
+
+	return connections.flatMap((connection) => {
+		const grant = manifest.mcp.find(
+			(item) => item.platformSlug === connection.platformSlug,
+		);
+		if (!grant) return [];
+		return connection.toolSnapshots.flatMap((snapshot) => {
+			const tool = grant.tools.find(
+				(item) =>
+					item.name === snapshot.name &&
+					item.fingerprint === snapshot.fingerprint,
+			);
+			if (!tool) return [];
+			if (connection.accessMode === "READ_ONLY" && tool.callKind !== "read") {
+				return [];
+			}
+			return [
+				{
+					organizationId,
+					platformSlug: connection.platformSlug,
+					connectionId: connection.id,
+					toolName: snapshot.name,
+					description: snapshot.description ?? tool.summary,
+					inputSchema: mcpToolArguments.parse(snapshot.inputSchema),
+				},
+			];
+		});
+	});
+}
+
 export async function callMcpTool(input: {
+	organizationId: string;
 	connectionId: string;
 	platformSlug: string;
 	toolName: string;
 	arguments: z.infer<typeof mcpToolArguments>;
 }): Promise<Prisma.JsonValue> {
-	const vendor = vendorBySlug(input.platformSlug);
-	if (!vendor) throw new Error("The MCP platform is unavailable.");
+	if (requireOrganizationId() !== input.organizationId) {
+		throw new Error("This MCP tool belongs to another workspace.");
+	}
 	const connection = await db.mcpConnection.findUnique({
 		where: { id: input.connectionId },
-		select: { status: true, accessMode: true },
+		select: { status: true, accessMode: true, platformSlug: true },
 	});
-	if (connection?.status !== "CONNECTED") {
+	if (
+		connection?.status !== "CONNECTED" ||
+		connection.platformSlug !== input.platformSlug
+	) {
 		throw new Error("The MCP platform is disconnected.");
 	}
+	const vendor = vendorBySlug(input.platformSlug);
+	if (!vendor) throw new Error("The MCP platform is unavailable.");
 	const mode =
 		connection.accessMode === "READ_ONLY" ? "read_only" : "read_write";
-	const token = await mcpConnectionToken(input.connectionId);
+	const token = await mcpConnectionToken(
+		input.connectionId,
+		input.organizationId,
+	);
 	const client = new Client({ name: "crm-agent", version: "1.0.0" });
 	const transport = new StreamableHTTPClientTransport(
 		new URL(vendorAccess(vendor, mode).url),

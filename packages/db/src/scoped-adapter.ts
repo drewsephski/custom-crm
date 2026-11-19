@@ -14,9 +14,11 @@ export const ORGANIZATION_SETTING = "crm.organization_id";
 
 const control = (sql: string): SqlQuery => ({ sql, args: [], argTypes: [] });
 
+export const SCOPE_SQL = `SELECT set_config('role', '${TENANT_ROLE}', true), set_config('${ORGANIZATION_SETTING}', $1, true)`;
+
 function scopeStatement(scope: DbScope | undefined): SqlQuery {
 	return {
-		sql: `SELECT set_config('role', '${TENANT_ROLE}', true), set_config('${ORGANIZATION_SETTING}', $1, true)`,
+		sql: SCOPE_SQL,
 		args: [scope?.kind === "tenant" ? scope.organizationId : ""],
 		argTypes: [{ scalarType: "string", arity: "scalar" }],
 	};

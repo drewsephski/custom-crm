@@ -1,4 +1,3 @@
-import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import {
 	AgentConversationPermissionMode,
 	type Db,
@@ -223,9 +222,9 @@ export class ConversationsService {
 					company: { select: { name: true, logoUrl: true } },
 				},
 			}),
-			this.db.account.findFirst({
-				where: slackAccountOfWorkspace(),
-				select: { id: true },
+			this.db.slackConnection.findUnique({
+				where: { organizationId: requireOrganizationId() },
+				select: { organizationId: true },
 			}),
 		]);
 

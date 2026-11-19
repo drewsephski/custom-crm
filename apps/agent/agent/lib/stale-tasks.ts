@@ -81,6 +81,7 @@ export async function reconcileStaleTasks(): Promise<StaleTaskSweep> {
 		for (const organizationId of await organizationIds()) {
 			await runInTenant(organizationId, () => runSweep(sweep));
 		}
+		sweep.retired = (await retireAbandoned()).length;
 	} catch (cause) {
 		sweep.error = cause instanceof Error ? cause.message : String(cause);
 		console.error(`[agent] Stale task reconciliation failed: ${sweep.error}`);
@@ -170,15 +171,13 @@ async function runSweep(sweep: StaleTaskSweep): Promise<void> {
 		sweep.closed += count;
 	}
 
-	sweep.retired = (await retireAbandoned()).length;
-
 	if (dead.length > 0) {
 		const { count } = await db.agentTask.updateMany({
 			where: { id: { in: dead }, finishedAt: null, leasedUntil: { lt: now } },
 			data: { leasedUntil: null },
 		});
 
-		sweep.released = count;
+		sweep.released += count;
 	}
 }
 

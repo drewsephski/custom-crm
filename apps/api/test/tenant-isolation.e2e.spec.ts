@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { auth } from "@crm/auth/auth";
-import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { db } from "@crm/db";
+import type { JsonValue } from "@crm/db/json";
 import { runAsSystem, runInTenant, runUnscoped } from "@crm/db/tenancy";
 import { ensureTestPipeline, testStageIds } from "@crm/db/testing";
 import type { INestApplication } from "@nestjs/common";
@@ -102,7 +102,7 @@ async function query(
 async function mutate(
 	user: string,
 	path: string,
-	input: Record<string, string | string[]>,
+	input: Record<string, JsonValue>,
 	workspace: string | null,
 ) {
 	const call = request(app.getHttpServer())
@@ -696,20 +696,25 @@ describe("invitations", () => {
 describe("people and Slack at the workspace boundary", () => {
 	const usersOutput = z.array(z.object({ id: z.string() }));
 
-	async function slackAccount(userId: string) {
-		const id = idOf(`slack-${userId}`);
-		await db.account.create({
-			data: {
-				id,
-				accountId: id,
-				providerId: "slack",
-				userId,
-				accessToken: "xoxb-test",
-				createdAt: new Date(),
-				updatedAt: new Date(),
-			},
-		});
-		return id;
+	const slackStatus = z.object({ connected: z.boolean() });
+
+	async function slackConnection(organizationId: string, teamId: string) {
+		await runInTenant(organizationId, () =>
+			db.slackConnection.create({
+				data: {
+					teamId,
+					botToken: `xoxb-${teamId}`,
+					botScopes: "chat:write",
+					installerSlackUserId: `U-${teamId}`,
+					installedById: USERS.shared,
+				},
+			}),
+		);
+	}
+
+	async function connected(user: string, workspace: string) {
+		const response = await query(user, "slack.status", {}, workspace);
+		return slackStatus.parse(dataOf(response)).connected;
 	}
 
 	it("lists only the people of the requested workspace", async () => {
@@ -738,28 +743,20 @@ describe("people and Slack at the workspace boundary", () => {
 		expect(response.status).toBe(400);
 	});
 
-	it("uses a Slack token only where its holder manages connections", async () => {
-		const sharedAccount = await slackAccount(USERS.shared);
-		const [inNorthstar, inHarbor] = await Promise.all([
-			db.account.findFirst({ where: slackAccountOfWorkspace(NORTHSTAR.id) }),
-			db.account.findFirst({ where: slackAccountOfWorkspace(HARBOR.id) }),
-		]);
-		expect(inNorthstar).toBeNull();
-		expect(inHarbor).toBeNull();
+	it("reads Slack only from the requested workspace's own connection", async () => {
+		await slackConnection(NORTHSTAR.id, idOf("T-north"));
 
-		const northstarAccount = await slackAccount(USERS.northstarOwner);
-		const [northstar, harbor] = await Promise.all([
-			db.account.findFirst({ where: slackAccountOfWorkspace(NORTHSTAR.id) }),
-			db.account.findFirst({ where: slackAccountOfWorkspace(HARBOR.id) }),
-		]);
-		expect(northstar?.id).toBe(northstarAccount);
-		expect(harbor).toBeNull();
-
-		await db.account.deleteMany({ where: { id: sharedAccount } });
+		expect(await connected(USERS.northstarMember, NORTHSTAR.slug)).toBe(true);
+		expect(await connected(USERS.shared, NORTHSTAR.slug)).toBe(true);
+		expect(await connected(USERS.shared, HARBOR.slug)).toBe(false);
+		expect(await connected(USERS.harborOwner, HARBOR.slug)).toBe(false);
+		expect(await runInTenant(HARBOR.id, () => db.slackConnection.count())).toBe(
+			0,
+		);
 	});
 
 	it("disconnects Slack in one workspace and leaves the other connected", async () => {
-		const harborAccount = await slackAccount(USERS.harborOwner);
+		await slackConnection(HARBOR.id, idOf("T-harbor"));
 
 		const response = await mutate(
 			USERS.harborOwner,
@@ -769,15 +766,8 @@ describe("people and Slack at the workspace boundary", () => {
 		);
 		expect(response.status).toBe(200);
 
-		expect(
-			await db.account.findUnique({ where: { id: harborAccount } }),
-		).toBeNull();
-		expect(
-			await db.account.findFirst({
-				where: slackAccountOfWorkspace(NORTHSTAR.id),
-				select: { userId: true },
-			}),
-		).toEqual({ userId: USERS.northstarOwner });
+		expect(await connected(USERS.harborOwner, HARBOR.slug)).toBe(false);
+		expect(await connected(USERS.northstarOwner, NORTHSTAR.slug)).toBe(true);
 	});
 });
 
@@ -934,5 +924,375 @@ describe("pipelines at the API boundary", () => {
 			HARBOR.slug,
 		);
 		expect(foreign.status).toBe(404);
+	});
+});
+
+describe("record owners stay inside the workspace", () => {
+	const created = z.object({ id: z.string() });
+
+	it("refuses another workspace's person as the owner of a new record", async () => {
+		const deal = await mutate(
+			USERS.northstarOwner,
+			"deals.create",
+			{
+				name: "Borrowed owner",
+				companyId: fixtures.northstarCompany,
+				ownerId: USERS.harborOwner,
+			},
+			NORTHSTAR.slug,
+		);
+		expect(deal.status).toBe(400);
+
+		const contact = await mutate(
+			USERS.northstarOwner,
+			"contacts.create",
+			{ firstName: "Borrowed", ownerId: USERS.harborOwner },
+			NORTHSTAR.slug,
+		);
+		expect(contact.status).toBe(400);
+
+		const company = await mutate(
+			USERS.northstarOwner,
+			"companies.create",
+			{ name: "Borrowed Co", ownerId: USERS.outsider },
+			NORTHSTAR.slug,
+		);
+		expect(company.status).toBe(400);
+	});
+
+	it("refuses another workspace's person when a record is edited", async () => {
+		const contact = await mutate(
+			USERS.northstarOwner,
+			"contacts.update",
+			{ id: fixtures.northstarContact, data: { ownerId: USERS.harborOwner } },
+			NORTHSTAR.slug,
+		);
+		expect(contact.status).toBe(400);
+
+		const company = await mutate(
+			USERS.northstarOwner,
+			"companies.update",
+			{ id: fixtures.northstarCompany, data: { ownerId: USERS.harborOwner } },
+			NORTHSTAR.slug,
+		);
+		expect(company.status).toBe(400);
+
+		const bulk = await mutate(
+			USERS.northstarOwner,
+			"companies.bulkAssignOwner",
+			{ ids: [fixtures.northstarCompany], ownerId: USERS.harborOwner },
+			NORTHSTAR.slug,
+		);
+		expect(bulk.status).toBe(400);
+	});
+
+	it("accepts a person who belongs to both workspaces in each of them", async () => {
+		const response = await mutate(
+			USERS.northstarOwner,
+			"contacts.update",
+			{ id: fixtures.northstarContact, data: { ownerId: USERS.shared } },
+			NORTHSTAR.slug,
+		);
+		expect(response.status).toBe(200);
+
+		const harbor = await mutate(
+			USERS.harborOwner,
+			"contacts.update",
+			{ id: fixtures.harborContact, data: { ownerId: USERS.shared } },
+			HARBOR.slug,
+		);
+		expect(harbor.status).toBe(200);
+	});
+
+	it("refuses a non-member owner in the database, past the API", async () => {
+		await expect(
+			runInTenant(NORTHSTAR.id, () =>
+				db.contact.update({
+					where: { id: fixtures.northstarContact },
+					data: { ownerId: USERS.harborOwner },
+				}),
+			),
+		).rejects.toMatchObject({ code: "P2003" });
+
+		const stages = await testStageIds(NORTHSTAR.id);
+		const rawDeal = (ownerId: string) =>
+			runAsSystem("write a deal around the API", () =>
+				db.deal.create({
+					data: {
+						organizationId: NORTHSTAR.id,
+						name: "Raw insert",
+						companyId: fixtures.northstarCompany,
+						ownerId,
+						stageId: stages.qualified ?? "",
+					},
+				}),
+			);
+		await expect(rawDeal(USERS.outsider)).rejects.toMatchObject({
+			code: "P2003",
+		});
+		await expect(rawDeal(USERS.harborOwner)).rejects.toMatchObject({
+			code: "P2003",
+		});
+		const accepted = await rawDeal(USERS.northstarMember);
+		await runAsSystem("remove the raw deal", () =>
+			db.deal.delete({ where: { id: accepted.id } }),
+		);
+	});
+
+	it("does not block an edit of a record whose owner is untouched", async () => {
+		const response = await mutate(
+			USERS.northstarOwner,
+			"contacts.update",
+			{ id: fixtures.northstarContact, data: { title: "Director" } },
+			NORTHSTAR.slug,
+		);
+		expect(response.status).toBe(200);
+	});
+
+	describe("when a member leaves", () => {
+		const leaver = idOf("leaver");
+		let deal: string;
+		let contact: string;
+
+		beforeAll(async () => {
+			await runAsSystem("seed a member who leaves", async () => {
+				await db.user.create({
+					data: {
+						id: leaver,
+						name: leaver,
+						email: `${leaver}@example.test`,
+						emailVerified: true,
+					},
+				});
+				for (const org of [NORTHSTAR, HARBOR]) {
+					await db.member.create({
+						data: {
+							id: idOf(`${org.id}-${leaver}`),
+							organizationId: org.id,
+							userId: leaver,
+							role: "member",
+							createdAt: new Date(),
+						},
+					});
+				}
+			});
+
+			const createdDeal = await mutate(
+				USERS.northstarOwner,
+				"deals.create",
+				{
+					name: "Leaver's deal",
+					companyId: fixtures.northstarCompany,
+					ownerId: leaver,
+				},
+				NORTHSTAR.slug,
+			);
+			deal = created.parse(dataOf(createdDeal)).id;
+
+			const createdContact = await mutate(
+				USERS.northstarOwner,
+				"contacts.create",
+				{ firstName: "Leaver contact", ownerId: leaver },
+				NORTHSTAR.slug,
+			);
+			contact = created.parse(dataOf(createdContact)).id;
+
+			await runInTenant(HARBOR.id, () =>
+				db.contact.update({
+					where: { id: fixtures.harborContact },
+					data: { ownerId: leaver },
+				}),
+			);
+
+			for (const org of [NORTHSTAR, HARBOR]) {
+				await runInTenant(org.id, () =>
+					db.mailboxSync.create({ data: { userId: leaver, source: "gmail" } }),
+				);
+			}
+		});
+
+		afterAll(async () => {
+			await runAsSystem("remove the leaver", async () => {
+				await db.deal.deleteMany({ where: { id: deal } });
+				await db.member.deleteMany({ where: { userId: leaver } });
+				await db.user.deleteMany({ where: { id: leaver } });
+			});
+		});
+
+		it("hands deals to the remover and clears other assignments in that workspace only", async () => {
+			const response = await mutate(
+				USERS.northstarOwner,
+				"workspace.removeMember",
+				{ memberId: idOf(`${NORTHSTAR.id}-${leaver}`) },
+				NORTHSTAR.slug,
+			);
+			expect(response.status).toBe(200);
+
+			const [northstar, harbor] = await Promise.all([
+				runInTenant(NORTHSTAR.id, () =>
+					Promise.all([
+						db.deal.findUnique({
+							where: { id: deal },
+							select: { ownerId: true },
+						}),
+						db.contact.findUnique({
+							where: { id: contact },
+							select: { ownerId: true },
+						}),
+						db.mailboxSync.count({ where: { userId: leaver } }),
+					]),
+				),
+				runInTenant(HARBOR.id, () =>
+					Promise.all([
+						db.contact.findUnique({
+							where: { id: fixtures.harborContact },
+							select: { ownerId: true },
+						}),
+						db.mailboxSync.count({ where: { userId: leaver } }),
+					]),
+				),
+			]);
+
+			expect(northstar).toEqual([
+				{ ownerId: USERS.northstarOwner },
+				{ ownerId: null },
+				0,
+			]);
+			expect(harbor).toEqual([{ ownerId: leaver }, 1]);
+		});
+
+		it("refuses the removed person as a new owner afterwards", async () => {
+			const response = await mutate(
+				USERS.northstarOwner,
+				"deals.update",
+				{ id: deal, data: { ownerId: leaver } },
+				NORTHSTAR.slug,
+			);
+			expect(response.status).toBe(400);
+		});
+
+		it("refuses to delete a member row that still owns deals", async () => {
+			const harborDeal = await mutate(
+				USERS.harborOwner,
+				"deals.create",
+				{
+					name: "Harbor leaver deal",
+					companyId: fixtures.harborCompany,
+					ownerId: leaver,
+				},
+				HARBOR.slug,
+			);
+			const harborDealId = created.parse(dataOf(harborDeal)).id;
+
+			await expect(
+				runAsSystem("delete a member around the API", () =>
+					db.member.delete({ where: { id: idOf(`${HARBOR.id}-${leaver}`) } }),
+				),
+			).rejects.toThrow();
+
+			const removed = await mutate(
+				USERS.harborOwner,
+				"workspace.removeMember",
+				{ memberId: idOf(`${HARBOR.id}-${leaver}`) },
+				HARBOR.slug,
+			);
+			expect(removed.status).toBe(200);
+			expect(
+				await runInTenant(HARBOR.id, () =>
+					db.deal.findUnique({
+						where: { id: harborDealId },
+						select: { ownerId: true },
+					}),
+				),
+			).toEqual({ ownerId: USERS.harborOwner });
+		});
+	});
+});
+
+describe("internal email belongs to the workspace", () => {
+	const agencyDomain = `northstar-agency-${suffix}.test`;
+	const northstarStaff = idOf("ns-staff");
+
+	beforeAll(async () => {
+		await runAsSystem("seed a Northstar staff member", async () => {
+			await db.user.create({
+				data: {
+					id: northstarStaff,
+					name: "Northstar staff",
+					email: `staff@${agencyDomain}`,
+					emailVerified: true,
+				},
+			});
+			await db.member.create({
+				data: {
+					id: idOf(`${NORTHSTAR.id}-${northstarStaff}`),
+					organizationId: NORTHSTAR.id,
+					userId: northstarStaff,
+					role: "member",
+					createdAt: new Date(),
+				},
+			});
+		});
+	});
+
+	afterAll(async () => {
+		await runAsSystem("remove the Northstar staff member", async () => {
+			await db.member.deleteMany({ where: { userId: northstarStaff } });
+			await db.user.deleteMany({ where: { id: northstarStaff } });
+		});
+	});
+
+	async function classify(organizationId: string, email: string) {
+		const { MailboxMatchService } = await import(
+			"../src/mailbox/mailbox-match.service"
+		);
+		const match = app.get(MailboxMatchService);
+		return runInTenant(organizationId, async () => {
+			const identity = await match.internalIdentity();
+			return {
+				internalAddress: identity.addresses.has(email),
+				internalDomain: identity.domains.has(email.split("@")[1] ?? ""),
+			};
+		});
+	}
+
+	it("treats a member's address and domain as internal in their own workspace", async () => {
+		expect(await classify(NORTHSTAR.id, `staff@${agencyDomain}`)).toEqual({
+			internalAddress: true,
+			internalDomain: true,
+		});
+	});
+
+	it("treats the same address and domain as a prospect in another workspace", async () => {
+		expect(await classify(HARBOR.id, `staff@${agencyDomain}`)).toEqual({
+			internalAddress: false,
+			internalDomain: false,
+		});
+		expect(await classify(HARBOR.id, `buyer@${agencyDomain}`)).toEqual({
+			internalAddress: false,
+			internalDomain: false,
+		});
+	});
+
+	it("treats a person in both workspaces as internal in each", async () => {
+		const email = `${USERS.shared}@example.test`;
+		expect((await classify(NORTHSTAR.id, email)).internalAddress).toBe(true);
+		expect((await classify(HARBOR.id, email)).internalAddress).toBe(true);
+		expect(
+			(await classify(HARBOR.id, `${USERS.northstarOwner}@example.test`))
+				.internalAddress,
+		).toBe(false);
+	});
+
+	it("credits automated notes to a member of the workspace, never another agency's user", async () => {
+		const { workspaceAuthor } = await import("@crm/auth/organization");
+		const [northstar, harbor, ownerFallback] = await Promise.all([
+			runInTenant(NORTHSTAR.id, () => workspaceAuthor(USERS.harborOwner)),
+			runInTenant(HARBOR.id, () => workspaceAuthor(null)),
+			runInTenant(HARBOR.id, () => workspaceAuthor(USERS.shared)),
+		]);
+		expect(northstar).toBe(USERS.northstarOwner);
+		expect(harbor).toBe(USERS.harborOwner);
+		expect(ownerFallback).toBe(USERS.shared);
 	});
 });

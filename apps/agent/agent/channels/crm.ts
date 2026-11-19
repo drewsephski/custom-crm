@@ -37,7 +37,7 @@ import {
 	organizationOfRun,
 	organizationOfSubmission,
 } from "../lib/organizations";
-import { finishRun, runResultOf } from "../lib/run-runtime";
+import { finishRun, finishStagedRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
 import { reconcileStaleTasks } from "../lib/stale-tasks";
@@ -316,6 +316,12 @@ export default defineChannel({
 		async "session.waiting"(_data, channel, ctx) {
 			await inSessionTenantOrSkip(ctx, "session.waiting", async () => {
 				if (await closeTask(channel.continuation?.token, "ran")) return;
+
+				const runId = runIdFromToken(channel.continuation?.token);
+				if (runId) {
+					await finishStagedRun(runId);
+					return;
+				}
 
 				const conversationId = builderIdFromToken(channel.continuation?.token);
 				if (!conversationId) return;

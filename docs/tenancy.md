@@ -47,6 +47,42 @@ which is null, and the column is `NOT NULL`). `requireOrganizationId()` throws a
 unawaited from `runInTenant` starts outside it and runs unscoped. `runInTenant` awaits
 for you — keep it that way.
 
+### The scope costs one round trip, not two
+
+A tenant statement outside a transaction is `BEGIN`, the scope `set_config`, the
+statement and `COMMIT`. `packages/db/src/tenant-pool.ts` wraps each `pg` client so
+the adapter's `BEGIN` waits for the next statement. When that statement is the
+scope `set_config`, both go to Postgres in one simple-protocol message:
+`BEGIN; SELECT set_config(...)`. The settings are still `is_local = true` inside
+an explicit transaction, so nothing outlives the transaction, and row-level
+security is unchanged. The workspace id is inlined only after it matches
+`isOrganizationId`, and through `escapeLiteral`. Anything else, such as a system
+transaction or `SET TRANSACTION ISOLATION LEVEL`, gets the plain `BEGIN` first.
+
+`relationJoins` is on in `schema.prisma`, so a read with nested relations is one
+statement instead of one per relation. Each statement pays the scope round trip,
+so this is the larger saving.
+
+`DATABASE_POOL_MAX`, `DATABASE_POOL_IDLE_TIMEOUT_MS` and
+`DATABASE_POOL_CONNECT_TIMEOUT_MS` size the pool (`packages/db/src/pool-config.ts`).
+
+`packages/db/scripts/latency-proxy.ts` adds a fixed delay to every packet, and
+`packages/db/scripts/bench-tenant-queries.ts` times the common list shapes through
+it. It also asserts that row-level security still hides the second organization.
+At a 20 ms round trip (p50, 2,000 companies, 10,000 contacts and 4,000 deals per
+organization):
+
+| Query | Before | Fused scope | Fused scope and relation joins |
+| --- | --- | --- | --- |
+| `findUnique` by id | 96 ms | 73 ms | 72 ms |
+| Contacts page, 50 rows, 2 relations | 205 ms | 158 ms | 93 ms |
+| Deals list, 4 queries in parallel | 192 ms | 145 ms | 73 ms |
+| Deals list, 4 queries in one `$transaction([...])` | 247 ms | 225 ms | 151 ms |
+
+Keep list procedures on `Promise.all`. One batch transaction runs its statements
+one after another on one connection, so it is slower for one request. It holds
+fewer connections, so it wins only when the pool is the bottleneck.
+
 ### Batched `findUnique` would cross tenants — and does not
 
 Prisma batches `findUnique` calls made in the same tick into one query, keyed only
@@ -68,6 +104,31 @@ columns on update, so a dangling id on an untouched column does not block an edi
 A deal's `stageId` is checked the same way, so a deal cannot sit in another
 agency's stage (`docs/pipelines.md`). `agentTask` has no trigger on purpose: it names records with no foreign key, and a
 task may outlive the record it names (a "deleted" event).
+
+### Owners are members of the organization
+
+A user can belong to several organizations, so a foreign key to `user` proves
+nothing about this one. `crm_assert_member()` is a `BEFORE INSERT OR UPDATE`
+trigger on `deal.ownerId`, `contact.ownerId`, `company.ownerId` and
+`fieldValue.userId`. It raises `23503` (Prisma `P2003`) when the user is not a
+`member` of the row's organization. Like `crm_assert_same_org()`, it checks only
+changed columns, so an old assignment never blocks an edit to another field.
+The services check first with `requireOwner` (`apps/api/src/crm/bulk.ts`) on
+create, update and every bulk path, so the caller gets a `400` with a reason.
+
+Removing a member releases their work in that organization only.
+`WorkspaceService.removeMember` hands their deals to the person who removed them,
+or to the oldest owner, then admin, then member when someone leaves. It clears
+their contact and company ownership and deletes their `mailboxSync` and
+`slackMemberMatch` rows there, so their mailbox stops syncing into a workspace
+they left. `crm_release_member()`, a `BEFORE DELETE` trigger on `member`, is the
+backstop: it clears contact, company and USER-field assignments and refuses the
+delete while the member still owns a deal. It does nothing when the whole
+organization is being deleted. Their records in other organizations do not change.
+
+`20261120090000_record_owner_membership` repairs existing rows once: contact,
+company and USER-field assignments to non-members become empty, and a deal owned
+by a non-member moves to the oldest owner of its organization.
 
 ### Uniqueness is per organization
 
@@ -114,10 +175,10 @@ Each is either install-wide by nature or mediated by explicit membership checks.
 
 | Table | Why |
 | --- | --- |
-| `user`, `session`, `account`, `verification`, `rateLimit`, `apikey` | Identities span workspaces. `account` holds OAuth tokens per *user*. Every Slack lookup and the Slack disconnect go through `slackAccountOfWorkspace` / `connectionManagerOfWorkspace` (`@crm/auth/organization`): the token of an owner or admin of the current organization, never a plain member's and never another agency's. A `user` read for a picker, an owner check or a `USER` field goes through `memberOfWorkspace` |
+| `user`, `session`, `account`, `verification`, `rateLimit`, `apikey` | Identities span workspaces. `account` holds OAuth tokens per *user* for Google and Microsoft. It no longer holds a Slack token: the bot token moves to the tenant-scoped `slackConnection` when the OAuth hook runs, and the account row's copy is cleared. A `user` read for a picker, an owner check, a `USER` field, an internal-email check or an automated note's author goes through `memberOfWorkspace` or `workspaceAuthor` (`@crm/auth/organization`) |
 | `organization`, `member`, `invitation`, `ssoProvider` | The tenancy registry itself. Read only through `resolveWorkspace`, `WorkspaceService` and `SsoService`, which check membership |
 | `mcpClientRegistration` | OAuth dynamic client registration is per MCP platform, not per agency. Tokens live on the tenant-scoped `mcpConnection` |
-| `slackInstallation` | A seconds-long handoff inside Slack's OAuth token callback, which has no session. The durable grant (`slackWorkspaceGrant`) is tenant-scoped |
+| `slackInstallation` | A seconds-long handoff inside Slack's OAuth token callback, which has no session. It is keyed by the SHA-256 of the bot token and the installer's Slack user id, so one exchange matches exactly one handoff even when one Slack user installs into two teams or two agencies at once. The durable rows (`slackConnection`, `slackWorkspaceGrant`) are tenant-scoped |
 | `trackingCounter` | Rate-limit counters; their keys carry the organization |
 | `install`, `telemetryMilestone`, `telemetryCounter` | Anonymous install-wide telemetry |
 

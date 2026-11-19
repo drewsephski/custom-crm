@@ -48,10 +48,16 @@ function serviceFor(input: {
 		[];
 	const deleted: string[] = [];
 	const tx = {
-		account: {
+		slackConnection: {
 			deleteMany: async () => {
-				deleted.push("account");
+				deleted.push("slackConnection");
 				return { count: input.accountUpdatedAt ? 1 : 0 };
+			},
+		},
+		slackMemberMatch: {
+			deleteMany: async () => {
+				deleted.push("slackMemberMatch");
+				return { count: 0 };
 			},
 		},
 		slackChannel: {
@@ -69,12 +75,13 @@ function serviceFor(input: {
 	};
 	const db = {
 		$transaction: async <T>(run: (client: typeof tx) => Promise<T>) => run(tx),
-		account: {
-			findFirst: async () =>
+		slackConnection: {
+			findUnique: async () =>
 				input.accountUpdatedAt
 					? {
-							id: "account-1",
-							accountId: "slack-user",
+							organizationId: "org-1",
+							teamName: "Acme",
+							botScopes: "chat:write",
 							updatedAt: input.accountUpdatedAt,
 						}
 					: null,
@@ -259,7 +266,12 @@ describe("Slack connection", () => {
 		});
 
 		expect(await service.disconnect(userId)).toEqual({ disconnected: true });
-		expect(deleted).toEqual(["account", "slackChannel", "slackWorkspaceGrant"]);
+		expect(deleted).toEqual([
+			"slackConnection",
+			"slackChannel",
+			"slackWorkspaceGrant",
+			"slackMemberMatch",
+		]);
 	});
 });
 

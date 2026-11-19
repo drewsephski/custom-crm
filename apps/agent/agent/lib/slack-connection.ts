@@ -1,14 +1,13 @@
-import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import { db } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 
 export async function slackAccessToken(): Promise<string | null> {
-	const account = await db.account.findFirst({
-		where: slackAccountOfWorkspace(),
-		orderBy: { updatedAt: "desc" },
-		select: { accessToken: true },
+	const connection = await db.slackConnection.findUnique({
+		where: { organizationId: requireOrganizationId() },
+		select: { botToken: true },
 	});
 
-	return account?.accessToken ?? null;
+	return connection?.botToken ?? null;
 }
 
 export async function slackConnected(): Promise<boolean> {

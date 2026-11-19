@@ -27,6 +27,13 @@ button quietly missing. **`passThroughEnv`, never `env`** — a secret in `env` 
 cache key, which means a cache miss on every rotation and the secret in the cache
 metadata. The root file's comment has the whole account.
 
+## Database pool
+
+`DATABASE_POOL_MAX` (default 10), `DATABASE_POOL_IDLE_TIMEOUT_MS` (30000) and
+`DATABASE_POOL_CONNECT_TIMEOUT_MS` (10000) size the `pg` pool of each process,
+in `packages/db/src/pool-config.ts`. On serverless every instance has its own pool,
+so keep instances times the maximum under the database's connection limit.
+
 ## Required
 
 `DATABASE_URL`, `BETTER_AUTH_SECRET`. Everything else has a localhost default or is
@@ -49,7 +56,8 @@ with none, the sign-in page says so by name rather than rendering nothing.
 **`ALLOWED_SIGN_IN`** — optional. Empty means self-service sign-up: anyone may
 register, and workspace membership decides what they see (`docs/tenancy.md`). Set it
 to restrict an install to whole domains or single addresses. It is also read by the
-sync's "which side is external" decision, together with the `User` table.
+sync's "which side is external" decision, together with the members of the current
+workspace.
 `packages/auth/src/workspace.ts`.
 
 **`ANTHROPIC_API_KEY`** — optional, server-side only. The agent and the AI setup

@@ -11,6 +11,7 @@ export const MCP_AUTH = {
 		expiresMs: HOUR_MS,
 	},
 	token: {
+		organizationHeader: "x-crm-organization-id",
 		refreshMarginMs: MINUTE_MS,
 		unknownExpiryMs: 5 * MINUTE_MS,
 	},

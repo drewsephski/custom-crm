@@ -1,9 +1,5 @@
 import { isSlackConfigured } from "@crm/auth/env";
-import {
-	canManageConnections,
-	connectionManagerOfWorkspace,
-	slackAccountOfWorkspace,
-} from "@crm/auth/organization";
+import { canManageConnections } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
 import { SLACK_INVENTORY } from "@crm/db/slack-inventory";
 import { requireOrganizationId } from "@crm/db/tenancy";
@@ -46,46 +42,44 @@ export class SlackConnectionService {
 
 	async status(userId: string): Promise<SlackStatus> {
 		const role = await this.access.assertMember(userId);
-		const [account, agents, matches, memberCount, grant] = await Promise.all([
-			this.db.account.findFirst({
-				where: slackAccountOfWorkspace(),
-				orderBy: { updatedAt: "desc" },
-				select: { accountId: true, updatedAt: true, scope: true },
-			}),
-			this.db.agentDefinition.findMany({
-				where: {
-					status: { in: ["LIVE", "PAUSED"] },
-					deletedAt: null,
-					currentVersionId: { not: null },
-					currentVersion: {
-						manifest: {
-							path: ["dataScope", "resources"],
-							array_contains: [{ id: SLACK_WORKSPACE_RESOURCE_ID }],
+		const [connection, agents, matches, memberCount, grant] = await Promise.all(
+			[
+				this.connection({ updatedAt: true, botScopes: true, teamName: true }),
+				this.db.agentDefinition.findMany({
+					where: {
+						status: { in: ["LIVE", "PAUSED"] },
+						deletedAt: null,
+						currentVersionId: { not: null },
+						currentVersion: {
+							manifest: {
+								path: ["dataScope", "resources"],
+								array_contains: [{ id: SLACK_WORKSPACE_RESOURCE_ID }],
+							},
 						},
 					},
-				},
-				orderBy: { updatedAt: "desc" },
-				take: 30,
-				select: { id: true, name: true, description: true, status: true },
-			}),
-			this.db.slackMemberMatch.findMany({
-				select: { slackUserId: true, updatedAt: true },
-			}),
-			this.db.member.count({
-				where: { organizationId: requireOrganizationId() },
-			}),
-			this.db.slackWorkspaceGrant.findFirst({
-				select: { id: true, teamName: true },
-			}),
-		]);
+					orderBy: { updatedAt: "desc" },
+					take: 30,
+					select: { id: true, name: true, description: true, status: true },
+				}),
+				this.db.slackMemberMatch.findMany({
+					select: { slackUserId: true, updatedAt: true },
+				}),
+				this.db.member.count({
+					where: { organizationId: requireOrganizationId() },
+				}),
+				this.db.slackWorkspaceGrant.findFirst({
+					select: { id: true, teamName: true },
+				}),
+			],
+		);
 
 		const matched = matches.filter((match) => match.slackUserId).length;
 		const reviewed = matches.length;
 		const inventoryFresh =
-			account &&
+			connection &&
 			reviewed === memberCount &&
-			matches.every((match) => match.updatedAt >= account.updatedAt);
-		if (account && !inventoryFresh) {
+			matches.every((match) => match.updatedAt >= connection.updatedAt);
+		if (connection && !inventoryFresh) {
 			await this.agent.slackPeopleRequested(
 				"Match workspace members to Slack accounts by exact email",
 			);
@@ -93,10 +87,12 @@ export class SlackConnectionService {
 
 		return {
 			configured: isSlackConfigured(),
-			connected: Boolean(account),
-			workspace: account ? (grant?.teamName ?? null) : null,
-			lastConnectedAt: account?.updatedAt.toISOString() ?? null,
-			scopes: (account?.scope ?? "")
+			connected: Boolean(connection),
+			workspace: connection
+				? (connection.teamName ?? grant?.teamName ?? null)
+				: null,
+			lastConnectedAt: connection?.updatedAt.toISOString() ?? null,
+			scopes: (connection?.botScopes ?? "")
 				.split(",")
 				.map((scope) => scope.trim())
 				.filter(Boolean),
@@ -105,6 +101,15 @@ export class SlackConnectionService {
 			agents,
 			people: { matched, reviewed },
 		};
+	}
+
+	private connection<Select extends Prisma.SlackConnectionSelect>(
+		select: Select,
+	) {
+		return this.db.slackConnection.findUnique({
+			where: { organizationId: requireOrganizationId() },
+			select,
+		});
 	}
 
 	async matches(userId: string): Promise<SlackMatches> {
@@ -167,12 +172,8 @@ export class SlackConnectionService {
 
 	async refreshPeople(userId: string): Promise<SlackRefreshPeopleResult> {
 		await this.access.assertMember(userId);
-		const account = await this.db.account.findFirst({
-			where: slackAccountOfWorkspace(),
-			orderBy: { updatedAt: "desc" },
-			select: { id: true },
-		});
-		if (!account) throw new NotFoundException("Slack is not connected.");
+		const connection = await this.connection({ organizationId: true });
+		if (!connection) throw new NotFoundException("Slack is not connected.");
 
 		await this.agent.slackPeopleRequested(
 			"Refresh Slack people and channels from the connection page",
@@ -226,11 +227,7 @@ export class SlackConnectionService {
 		const emptyInventory = sync === "idle" && !needle && page.length === 0;
 		const [account, lastFill] = emptyInventory
 			? await Promise.all([
-					this.db.account.findFirst({
-						where: slackAccountOfWorkspace(),
-						orderBy: { updatedAt: "desc" },
-						select: { updatedAt: true },
-					}),
+					this.connection({ updatedAt: true }),
 					this.db.agentTask.findFirst({
 						where: {
 							kind: SLACK_INVENTORY.kind,
@@ -329,15 +326,11 @@ export class SlackConnectionService {
 		}
 
 		const removed = await this.db.$transaction(async (tx) => {
-			const accounts = await tx.account.deleteMany({
-				where: {
-					providerId: "slack",
-					user: connectionManagerOfWorkspace(),
-				},
-			});
+			const connections = await tx.slackConnection.deleteMany({});
 			await tx.slackChannel.deleteMany({});
 			await tx.slackWorkspaceGrant.deleteMany({});
-			return accounts.count;
+			await tx.slackMemberMatch.deleteMany({});
+			return connections.count;
 		});
 
 		if (removed === 0) throw new NotFoundException("Slack is not connected.");

@@ -2,7 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db, RateSource } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
 import { settingsKey, writeReportingCurrency } from "@crm/db/settings";
-import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
+import {
+	ensureTestMember,
+	TEST_ORGANIZATION,
+	testStageIds,
+} from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -107,6 +111,7 @@ beforeAll(async () => {
 		},
 		update: {},
 	});
+	await ensureTestMember(userId);
 
 	const company = await db.company.create({
 		data: { name: `Money Co ${suffix}`, domain },
@@ -463,6 +468,7 @@ describe("the dashboard only values what it can convert", () => {
 			},
 			update: {},
 		});
+		await ensureTestMember(analystId);
 	});
 
 	afterAll(async () => {

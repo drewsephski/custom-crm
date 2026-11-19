@@ -358,6 +358,24 @@ delegation paths for custom agents.
 - **Whoever started it can stop it**, plus the creator and workspace admins.
   `canCancel` is computed server-side per run and is what the button reads, so the
   control and the 403 cannot disagree.
+- **A run settles when its session parks.** `finish_run` only stages the summary
+  and result. `session.waiting` on the `run:` token then calls `finishStagedRun`,
+  which finishes a `RUNNING` run that has a staged summary. A run waiting for an
+  approval has no staged summary, so it stays open. `session.completed` fires only
+  at the 30-day session deadline, so it is a backstop, not the normal path.
+- **MCP tools belong to the runner, not the root.** `agent_runner/tools/mcp.ts`
+  resolves `<platform>__<tool>` tools at `session.started` from the pinned
+  manifest, the workspace's `CONNECTED` connection and its `REVIEWED` snapshots.
+  A declared subagent inherits no root tools, so a root-level MCP tool never
+  reaches the runner. Every callback enters the session's workspace with
+  `inSessionTenant`: the resolver, the approval and `execute`. `callMcpTool`
+  refuses a session whose workspace is not the one the tool was resolved for, and
+  the token request names the workspace in `x-crm-organization-id`. The API's
+  `/internal/mcp/connections/:id/token` answers only when the connection belongs
+  to that workspace. Tests that run under the test fallback workspace do not prove
+  any of this, because the fallback hides a missing scope.
+  `test/e2e/mcp-live-run.e2e.ts` runs a real deployed run against a local MCP
+  server. See "Running the live MCP check" below.
 - **`turn.cancelled` settles the run too**, keyed off `run:` in the continuation
   token, so a cancel from any other path still reaches `finishedAt` rather than
   leaving the run reading *Running* forever.
@@ -376,6 +394,28 @@ HTTP channel. It creates an isolated private conversation, dispatches the builde
 asserts the declared subagent path, verifies a READY side-effect-free manifest, and
 cleans up its rows. It skips visibly when the database, bridge secret or model
 credential is unavailable.
+
+### Running the live MCP check
+
+It spends a few model calls, so it is not in `bun run test`. Point every process at
+`crm_test`, never at a database with real data. Use one `AGENT_BRIDGE_SECRET` and
+one `MCP_ENCRYPTION_KEY` for all of them.
+
+1. `bun test/e2e/mcp-live-server.ts` in `apps/agent`, with
+   `MCP_LIVE_TOKENS="mcp-live-token-northstar:Northstar onboarding checklist"`.
+2. The API on port 3101: `PORT=3101 bun src/main.ts` in `apps/api`.
+3. `bunx eve build`, then `eve start --port 3010` in `apps/agent`, with
+   `API_URL=http://127.0.0.1:3101` and
+   `NODE_OPTIONS=--import=<abs path>/test/e2e/mcp-live-redirect.mjs`. The preload
+   sends the Linear MCP URL to the local server. Nothing in the product changes.
+4. `E2E_LIVE_MODEL=1 bun test/e2e/mcp-live-run.e2e.ts` in `apps/agent`.
+
+It seeds two workspaces. Northstar has a Linear connection and a deployed agent
+that may call `list_issues` only. Harbor has the same agent and no connection. The
+check passes when Northstar's run succeeds with the tool result, every MCP call
+carries Northstar's token, `delete_issue` never runs, Harbor's run never reaches an
+MCP server, and the token broker refuses Harbor's request for Northstar's
+connection. It deletes both workspaces when it ends.
 
 ## The bridge
 

@@ -1,5 +1,5 @@
 import { db } from "@crm/db";
-import { requireOrganizationId } from "@crm/db/tenancy";
+import { requireOrganizationId, runInTenant } from "@crm/db/tenancy";
 import { vendorAccess } from "@crm/mcp-integrations/catalog";
 import type { Vendor } from "@crm/mcp-integrations/vendor";
 import type { AgentConnectionRequestStatus } from "@crm/validation/agent-connection-request";
@@ -19,6 +19,7 @@ import { z } from "zod";
 import { permissionModeOf } from "./approval";
 import { mcpConnectionToken } from "./mcp-token";
 import { attribute, purposeOf } from "./session-purpose";
+import { organizationOf } from "./tenant-scope";
 
 const toolCallKind = z.enum(["read", "change", "risky"]);
 
@@ -108,6 +109,7 @@ export function buildChatMcpConnections(
 	connections: readonly ChatMcpConnection[],
 	userId: string,
 ): DynamicConnectionSet {
+	const organizationId = requireOrganizationId();
 	const bySlug = new Map(
 		connections.map((connection) => [connection.platformSlug, connection]),
 	);
@@ -126,16 +128,23 @@ export function buildChatMcpConnections(
 					description: `${vendor.name}: ${vendor.presentation.description}`,
 					instanceKey: connection
 						? `${connection.id}:${mode}`
-						: `${requireOrganizationId()}:${vendor.slug}`,
+						: `${organizationId}:${vendor.slug}`,
 					tools: {
 						allow: connection?.toolSnapshots.map((tool) => tool.name) ?? [],
 					},
 					auth: {
 						credentialOwner: "user",
 						getToken: ({ principal }) =>
-							chatMcpToken(vendor, connection, userId, principal),
+							runInTenant(organizationId, () =>
+								chatMcpToken(vendor, connection, userId, principal),
+							),
 					},
-					approval: chatMcpApproval(vendor.slug, connection, userId),
+					approval: chatMcpApproval(
+						vendor.slug,
+						connection,
+						userId,
+						organizationId,
+					),
 				}),
 			] as const;
 		}),
@@ -162,7 +171,7 @@ async function chatMcpToken(
 	}
 
 	try {
-		return await mcpConnectionToken(connection.id);
+		return await mcpConnectionToken(connection.id, requireOrganizationId());
 	} catch {
 		const current = await db.mcpConnection.findUnique({
 			where: { id: connection.id },
@@ -185,10 +194,20 @@ function chatMcpApproval(
 	platformSlug: string,
 	connection: ChatMcpConnection | null,
 	userId: string,
+	organizationId: string,
 ): ApprovalConfiguration {
 	return {
-		request: async (context) =>
-			authorizeChatMcpTool(platformSlug, connection, userId, context),
+		request: async (context) => {
+			if (organizationOf(context) !== organizationId) {
+				return {
+					type: "denied",
+					reason: "This connected tool belongs to another workspace.",
+				};
+			}
+			return runInTenant(organizationId, () =>
+				authorizeChatMcpTool(platformSlug, connection, userId, context),
+			);
+		},
 		response: ({ request, response }) => {
 			if (
 				request.principal &&

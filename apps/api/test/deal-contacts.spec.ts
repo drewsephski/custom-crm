@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { ensureTestMember } from "@crm/db/testing";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
@@ -54,6 +55,7 @@ beforeAll(async () => {
 			emailVerified: true,
 		},
 	});
+	await ensureTestMember(userId);
 
 	const company = await db.company.create({
 		data: { name: `People Co ${suffix}`, domain },

@@ -4,12 +4,16 @@ import { TEST_ORGANIZATION } from "@crm/db/testing";
 
 const WORKSPACE_ID = TEST_ORGANIZATION.id;
 
+import { runAsSystem, runInTenant } from "@crm/db/tenancy";
 import type { ApprovalContext } from "eve/tools";
 import {
 	authorizeMcpTool,
+	callMcpTool,
 	capMcpArchivedResult,
 	mcpModelOutput,
+	runMcpGrants,
 } from "../agent/lib/mcp-runtime";
+import { finishStagedRun } from "../agent/lib/run-runtime";
 
 const suffix = crypto.randomUUID();
 const platformSlug = `linear-${suffix}`;
@@ -23,6 +27,7 @@ let runId = "";
 let registrationId = "";
 let connectionId = "";
 let createdWorkspace = false;
+const OTHER_WORKSPACE_ID = `mcp-other-${suffix}`;
 
 function context(
 	toolName: string,
@@ -67,6 +72,16 @@ beforeAll(async () => {
 		});
 		createdWorkspace = true;
 	}
+	await runAsSystem("seed a second workspace", () =>
+		db.organization.create({
+			data: {
+				id: OTHER_WORKSPACE_ID,
+				name: "Other agency",
+				slug: OTHER_WORKSPACE_ID,
+				createdAt: new Date(),
+			},
+		}),
+	);
 	await db.user.create({
 		data: {
 			id: userId,
@@ -223,6 +238,9 @@ afterAll(async () => {
 	await db.agentVersion.deleteMany({ where: { id: versionId } });
 	await db.agentDefinition.deleteMany({ where: { id: agentId } });
 	await db.user.deleteMany({ where: { id: userId } });
+	await runAsSystem("remove the second workspace", () =>
+		db.organization.deleteMany({ where: { id: OTHER_WORKSPACE_ID } }),
+	);
 	if (createdWorkspace) {
 		await db.organization.deleteMany({ where: { id: WORKSPACE_ID } });
 	}
@@ -429,5 +447,92 @@ describe("MCP runtime authorization", () => {
 				where: { idempotencyKey: `${runId}:change-once` },
 			}),
 		).toBe(1);
+	});
+
+	it("resolves a run's MCP tools only inside the run's workspace", async () => {
+		const own = await runInTenant(WORKSPACE_ID, () => runMcpGrants(runId));
+		expect(own.map((grant) => grant.toolName).sort()).toEqual([
+			"create_issue",
+			"delete_issue",
+			"list_issues",
+		]);
+		expect(new Set(own.map((grant) => grant.organizationId))).toEqual(
+			new Set([WORKSPACE_ID]),
+		);
+
+		expect(
+			await runInTenant(OTHER_WORKSPACE_ID, () => runMcpGrants(runId)),
+		).toEqual([]);
+	});
+
+	it("denies another workspace's approval of this run's tool", async () => {
+		const status = await runInTenant(OTHER_WORKSPACE_ID, () =>
+			authorizeMcpTool(platformSlug, context("list_issues", "cross-1")),
+		);
+		expect(status).toEqual({
+			type: "denied",
+			reason: "The agent run is unavailable.",
+		});
+	});
+
+	it("refuses to call a tool from another workspace's session", async () => {
+		const call = {
+			connectionId,
+			platformSlug,
+			toolName: "list_issues",
+			arguments: {},
+		};
+		await expect(
+			runInTenant(OTHER_WORKSPACE_ID, () =>
+				callMcpTool({ ...call, organizationId: WORKSPACE_ID }),
+			),
+		).rejects.toThrow("This MCP tool belongs to another workspace.");
+		await expect(
+			runInTenant(OTHER_WORKSPACE_ID, () =>
+				callMcpTool({ ...call, organizationId: OTHER_WORKSPACE_ID }),
+			),
+		).rejects.toThrow("The MCP platform is disconnected.");
+	});
+
+	it("finishes a run when its session parks with a staged result", async () => {
+		const queued = (key: string, summary: string | null) =>
+			db.agentRun.create({
+				data: {
+					agentId,
+					versionId,
+					triggerType: "MANUAL",
+					status: "RUNNING",
+					summary,
+					idempotencyKey: `${key}-${suffix}`,
+					correlationId: `${key}-${suffix}`,
+				},
+				select: { id: true },
+			});
+		const staged = await queued("staged", "Listed two issues.");
+		const waiting = await queued("waiting", null);
+
+		expect(await finishStagedRun(staged.id)).toBe(true);
+		expect(await finishStagedRun(waiting.id)).toBe(false);
+
+		const rows = await db.agentRun.findMany({
+			where: { id: { in: [staged.id, waiting.id] } },
+			select: { id: true, status: true },
+		});
+		expect(Object.fromEntries(rows.map((row) => [row.id, row.status]))).toEqual(
+			{
+				[staged.id]: "SUCCEEDED",
+				[waiting.id]: "RUNNING",
+			},
+		);
+
+		await db.agentRunEvent.deleteMany({
+			where: { runId: { in: [staged.id, waiting.id] } },
+		});
+		await db.agentAuditEvent.deleteMany({
+			where: { requestId: { in: [staged.id, waiting.id] } },
+		});
+		await db.agentRun.deleteMany({
+			where: { id: { in: [staged.id, waiting.id] } },
+		});
 	});
 });

@@ -77,6 +77,11 @@ The gauntlet, in order, in `TrackingIngestService.accept`:
 
 1. **User agent** — the `BOT` pattern.
 2. **Site id** — must be a live `cmp_` id, and `forSite` refuses a rotated one.
+   A new id is `cmp_` and 32 hex characters, 128 random bits. An id minted before
+   that is `cmp_` and 8 hex characters. It keeps working, because it is already
+   pasted on customer sites. `isLegacySiteId` names it. Rotating replaces it with
+   a long one. The `appSetting_trackingSiteId_shape` check constraint accepts only
+   these two shapes.
 3. **Origin** — `originAllowed`. A missing `Origin` header is refused **even with
    the allow list off**, because the header is the only thing tying the POST to a
    browser on a page.
@@ -217,7 +222,12 @@ everybody: a member's render would fire a request that can only be refused.
   512 KB cut was smaller than one homepage this repo's own company ships, and a
   tag past the cut reads exactly like a tag that is not there.
 - **Rotating the site id is the kill switch for a stolen snippet.** The old id stops
-  resolving at `forSite` within the cache TTL.
+  resolving at `forSite` within the cache TTL. Rotation also upgrades a legacy
+  8-character id. The loader accepts both shapes. Browsers keep it for
+  `LOADER_MAX_AGE_SECONDS`, and the edge keeps it for a year. Vercel's edge serves
+  the new loader after a deploy. A self-hoster with another CDN in front must purge
+  `/t/crm.js` once before anyone rotates, or browsers behind that CDN keep a loader
+  that refuses the long id.
 - **The compiled config is cached for five minutes and invalidated on every write.**
   Two things guard the cache, because one is not enough. `invalidate()` bumps a
   **per-process generation** before it deletes, which stops this replica's own

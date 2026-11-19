@@ -1,6 +1,7 @@
 import { defineDynamic, defineInstructions } from "eve/instructions";
 import { approvedRunInstructions } from "../../../lib/run-runtime";
 import { attribute, purposeOf } from "../../../lib/session-purpose";
+import { inSessionTenant } from "../../../lib/tenant-scope";
 
 export default defineDynamic({
 	events: {
@@ -10,7 +11,7 @@ export default defineDynamic({
 			if (!runId) return null;
 
 			return defineInstructions({
-				markdown: `# Human-approved version instructions\n\n${await approvedRunInstructions(runId)}`,
+				markdown: `# Human-approved version instructions\n\n${await inSessionTenant(ctx, () => approvedRunInstructions(runId))}`,
 			});
 		},
 	},

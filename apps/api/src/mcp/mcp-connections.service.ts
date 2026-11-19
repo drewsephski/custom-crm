@@ -663,7 +663,7 @@ export class McpConnectionsService {
 		return { disconnected: true as const };
 	}
 
-	async token(connectionId: string) {
+	async token(connectionId: string, organizationId: string) {
 		const owner = await runAsSystem(
 			"find the workspace of an MCP connection",
 			() =>
@@ -672,9 +672,10 @@ export class McpConnectionsService {
 					select: { organizationId: true },
 				}),
 		);
-		if (!owner)
+		if (owner?.organizationId !== organizationId) {
 			throw new NotFoundException("The MCP connection is not active.");
-		return runInTenant(owner.organizationId, () => this.tokenFor(connectionId));
+		}
+		return runInTenant(organizationId, () => this.tokenFor(connectionId));
 	}
 
 	private async tokenFor(connectionId: string) {

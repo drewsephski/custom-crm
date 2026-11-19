@@ -34,6 +34,15 @@ export const E2E = {
 		bogusChannelName: "missing",
 	},
 
+	mcpLive: {
+		agentPrefix: "E2E MCP Live Agent",
+		apiUrl: "http://127.0.0.1:3101",
+		log: "mcp-live-calls.jsonl",
+		tokenA: "mcp-live-token-northstar",
+		issueTitle: "Northstar onboarding checklist",
+		modelId: "claude-haiku-5-5",
+	},
+
 	liveRun: {
 		agentPrefix: "E2E Live Agent",
 		agentUrl: "http://localhost:3010",

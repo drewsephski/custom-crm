@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db, RecordSource } from "@crm/db";
+import { ensureTestMember } from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -116,6 +117,7 @@ beforeAll(async () => {
 	await db.user.create({
 		data: { id: userId, name: "Test Rep", email: `${userId}@example.test` },
 	});
+	await ensureTestMember(userId);
 });
 
 afterAll(clean);
