@@ -21,7 +21,10 @@ const CONNECT_MANAGER_ROLES = WORKSPACE_ROLES.filter((role) =>
 const SLACK_CONNECT_START_PATHS = ["/link-social", "/sign-in/social"];
 const OAUTH_CALLBACK_PATH = "/callback";
 
-const connectStartBody = z.object({ provider: z.string() });
+const connectStartBody = z.object({
+	provider: z.string(),
+	callbackURL: z.string().optional(),
+});
 const callbackParams = z.object({ id: z.string() });
 
 export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
@@ -37,7 +40,13 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 		});
 	}
 
-	const organizationId = await activeOrganizationOfSession(session.session.id);
+	const organizationId =
+		(await workspaceOnScreen(
+			ctx.path,
+			ctx.body,
+			session.user.id,
+			session.session.id,
+		)) ?? (await activeOrganizationOfSession(session.session.id));
 	if (!organizationId) {
 		throw new APIError("FORBIDDEN", {
 			message: "Open a workspace before you connect Slack.",
@@ -69,6 +78,37 @@ export const slackConnectGuard = createAuthMiddleware(async (ctx) => {
 		});
 	}
 });
+
+async function workspaceOnScreen(
+	path: string,
+	body: JsonValue | undefined,
+	userId: string,
+	sessionId: string,
+): Promise<string | null> {
+	if (!startsSlackConnect(path, body)) return null;
+
+	const slug = slugOf(connectStartBody.parse(body).callbackURL);
+	if (!slug) return null;
+
+	const workspace = await db.organization.findFirst({
+		where: { slug, members: { some: { userId } } },
+		select: { id: true },
+	});
+	if (!workspace) return null;
+
+	await db.session.update({
+		where: { id: sessionId },
+		data: { activeOrganizationId: workspace.id },
+	});
+
+	return workspace.id;
+}
+
+function slugOf(callbackURL: string | undefined): string | null {
+	if (!callbackURL || !URL.canParse(callbackURL)) return null;
+	const [slug] = new URL(callbackURL).pathname.split("/").filter(Boolean);
+	return slug ?? null;
+}
 
 function startsSlackConnect(
 	path: string,

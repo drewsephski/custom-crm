@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { auth } from "@crm/auth/auth";
+import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { db } from "@crm/db";
 import { runAsSystem, runInTenant, runUnscoped } from "@crm/db/tenancy";
@@ -87,7 +88,7 @@ function cookieOf(user: string): string {
 async function query(
 	user: string,
 	path: string,
-	input: Record<string, string>,
+	input: Record<string, string | string[]>,
 	workspace: string | null,
 ) {
 	const call = request(app.getHttpServer())
@@ -101,7 +102,7 @@ async function query(
 async function mutate(
 	user: string,
 	path: string,
-	input: Record<string, string>,
+	input: Record<string, string | string[]>,
 	workspace: string | null,
 ) {
 	const call = request(app.getHttpServer())
@@ -689,6 +690,94 @@ describe("invitations", () => {
 			null,
 		);
 		expect(accepted.status).toBe(403);
+	});
+});
+
+describe("people and Slack at the workspace boundary", () => {
+	const usersOutput = z.array(z.object({ id: z.string() }));
+
+	async function slackAccount(userId: string) {
+		const id = idOf(`slack-${userId}`);
+		await db.account.create({
+			data: {
+				id,
+				accountId: id,
+				providerId: "slack",
+				userId,
+				accessToken: "xoxb-test",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+		});
+		return id;
+	}
+
+	it("lists only the people of the requested workspace", async () => {
+		const response = await query(
+			USERS.northstarOwner,
+			"users.list",
+			{},
+			NORTHSTAR.slug,
+		);
+		const ids = usersOutput.parse(dataOf(response)).map((user) => user.id);
+
+		expect(ids.sort()).toEqual(
+			[USERS.northstarOwner, USERS.northstarMember, USERS.shared].sort(),
+		);
+		expect(ids).not.toContain(USERS.harborOwner);
+		expect(ids).not.toContain(USERS.outsider);
+	});
+
+	it("does not make a person from another workspace an owner", async () => {
+		const response = await mutate(
+			USERS.northstarOwner,
+			"contacts.bulkAssignOwner",
+			{ ids: [fixtures.northstarContact], ownerId: USERS.harborOwner },
+			NORTHSTAR.slug,
+		);
+		expect(response.status).toBe(400);
+	});
+
+	it("uses a Slack token only where its holder manages connections", async () => {
+		const sharedAccount = await slackAccount(USERS.shared);
+		const [inNorthstar, inHarbor] = await Promise.all([
+			db.account.findFirst({ where: slackAccountOfWorkspace(NORTHSTAR.id) }),
+			db.account.findFirst({ where: slackAccountOfWorkspace(HARBOR.id) }),
+		]);
+		expect(inNorthstar).toBeNull();
+		expect(inHarbor).toBeNull();
+
+		const northstarAccount = await slackAccount(USERS.northstarOwner);
+		const [northstar, harbor] = await Promise.all([
+			db.account.findFirst({ where: slackAccountOfWorkspace(NORTHSTAR.id) }),
+			db.account.findFirst({ where: slackAccountOfWorkspace(HARBOR.id) }),
+		]);
+		expect(northstar?.id).toBe(northstarAccount);
+		expect(harbor).toBeNull();
+
+		await db.account.deleteMany({ where: { id: sharedAccount } });
+	});
+
+	it("disconnects Slack in one workspace and leaves the other connected", async () => {
+		const harborAccount = await slackAccount(USERS.harborOwner);
+
+		const response = await mutate(
+			USERS.harborOwner,
+			"slack.disconnect",
+			{},
+			HARBOR.slug,
+		);
+		expect(response.status).toBe(200);
+
+		expect(
+			await db.account.findUnique({ where: { id: harborAccount } }),
+		).toBeNull();
+		expect(
+			await db.account.findFirst({
+				where: slackAccountOfWorkspace(NORTHSTAR.id),
+				select: { userId: true },
+			}),
+		).toEqual({ userId: USERS.northstarOwner });
 	});
 });
 

@@ -87,6 +87,7 @@ current organization (`packages/db/src/idempotency.ts`).
 | tRPC behind `UserMiddleware` (`workspaces.*`) | None — list, create, switch, accept invitations |
 | `GET/POST /api/t/*` (tracking collector) | `appSetting.trackingSiteId` → organization, looked up server-side |
 | `GET /api/mcp/callback` | The OAuth state row's organization, then the user's role there |
+| Slack connect (`/api/auth/link-social`, then the callback) | The workspace in the `callbackURL` the button sends, if the caller belongs to it; it becomes the session's active organization before the role check |
 | `GET /api/conversations/attachments/:id` | The attachment's organization, if the reader is a member |
 | Crons (`archive`, `rates`, `sync`) | `forEachOrganization` (`apps/api/src/tenancy/for-each-organization.ts`) |
 | Crons (`tracking/retention`, `telemetry`) | System — install-wide maintenance |
@@ -113,7 +114,7 @@ Each is either install-wide by nature or mediated by explicit membership checks.
 
 | Table | Why |
 | --- | --- |
-| `user`, `session`, `account`, `verification`, `rateLimit`, `apikey` | Identities span workspaces. `account` holds OAuth tokens per *user*; every Slack lookup filters to members of the current organization |
+| `user`, `session`, `account`, `verification`, `rateLimit`, `apikey` | Identities span workspaces. `account` holds OAuth tokens per *user*. Every Slack lookup and the Slack disconnect go through `slackAccountOfWorkspace` / `connectionManagerOfWorkspace` (`@crm/auth/organization`): the token of an owner or admin of the current organization, never a plain member's and never another agency's. A `user` read for a picker, an owner check or a `USER` field goes through `memberOfWorkspace` |
 | `organization`, `member`, `invitation`, `ssoProvider` | The tenancy registry itself. Read only through `resolveWorkspace`, `WorkspaceService` and `SsoService`, which check membership |
 | `mcpClientRegistration` | OAuth dynamic client registration is per MCP platform, not per agency. Tokens live on the tenant-scoped `mcpConnection` |
 | `slackInstallation` | A seconds-long handoff inside Slack's OAuth token callback, which has no session. The durable grant (`slackWorkspaceGrant`) is tenant-scoped |

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import { db, type Prisma } from "@crm/db";
 import {
 	CRM_EVENT_CATALOG,
@@ -675,7 +676,7 @@ async function connectionStatus(userId: string) {
 				select: { providerId: true, scope: true },
 			}),
 			db.account.findFirst({
-				where: { providerId: "slack", accessToken: { not: null } },
+				where: slackAccountOfWorkspace(),
 				orderBy: { updatedAt: "desc" },
 				select: { id: true },
 			}),

@@ -90,6 +90,16 @@ beforeAll(async () => {
 		],
 	});
 
+	await db.member.createMany({
+		data: [ownerId, secondOwnerId].map((userId) => ({
+			id: `member-${userId}`,
+			organizationId: TEST_ORGANIZATION.id,
+			userId,
+			role: "member",
+			createdAt: new Date(),
+		})),
+	});
+
 	const company = await db.company.create({
 		data: { name: `Bulk Co ${suffix}`, domain },
 		select: { id: true },

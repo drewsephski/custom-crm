@@ -2,6 +2,7 @@ import { db } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { requireOrganizationId } from "@crm/db/tenancy";
 import type { OauthAccess } from "@crm/validation";
+import { connectionManagerOfWorkspace } from "./organization";
 import { SLACK_PROVIDER_ID } from "./scopes";
 import { SLACK_CONNECTION } from "./slack-config";
 
@@ -39,7 +40,7 @@ export async function replaceSlackConnection(account: {
 			where: {
 				providerId: SLACK_PROVIDER_ID,
 				id: { not: account.id },
-				user: { members: { some: { organizationId } } },
+				user: connectionManagerOfWorkspace(organizationId),
 			},
 		});
 
