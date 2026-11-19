@@ -166,7 +166,7 @@ function ProfileForm({ aiAvailable }: { aiAvailable: boolean }) {
 			description={
 				aiAvailable
 					? "Claude proposes a setup from your answers. A ready-made agency template appears at once, so you are never waiting on it."
-					: "AI is not configured on this install, so you get the ready-made agency template for your type of work."
+					: "AI proposals are not available right now: they need ANTHROPIC_API_KEY and a running agent. You get the ready-made agency template for your type of work."
 			}
 			action={
 				<Button

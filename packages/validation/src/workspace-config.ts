@@ -170,32 +170,27 @@ const BASE_PIPELINE: WorkspaceConfig["pipeline"] = [
 	{ key: "lost", label: "Lost", outcome: "lost", probability: 0 },
 ];
 
-const SERVICES = {
-	web: [
-		{ key: "website_build", label: "Website development", recurring: false },
-		{ key: "seo", label: "SEO", recurring: true },
-		{ key: "maintenance", label: "Monthly maintenance", recurring: true },
-		{ key: "branding", label: "Branding", recurring: false },
-	],
-	marketing: [
-		{ key: "paid_ads", label: "Paid advertising management", recurring: true },
-		{ key: "seo", label: "SEO", recurring: true },
-		{ key: "content", label: "Content marketing", recurring: true },
-		{ key: "branding", label: "Branding", recurring: false },
-	],
-	ai: [
-		{ key: "ai_automation", label: "AI automation", recurring: false },
-		{ key: "consulting", label: "Consulting", recurring: false },
-		{ key: "ai_support", label: "Automation support plan", recurring: true },
-	],
-	mixed: [
-		{ key: "website_build", label: "Website development", recurring: false },
-		{ key: "ai_automation", label: "AI automation", recurring: false },
-		{ key: "seo", label: "SEO", recurring: true },
-		{ key: "maintenance", label: "Monthly maintenance", recurring: true },
-		{ key: "consulting", label: "Consulting", recurring: false },
-	],
-} as const satisfies Record<AgencyType, WorkspaceConfig["services"]>;
+const RECURRING_SERVICE =
+	/maintenance|retainer|monthly|support|management|hosting|subscription|ongoing|seo|ads/i;
+
+function serviceKey(label: string, index: number): string {
+	const slug = label
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.slice(0, 40);
+	return /^[a-z]/.test(slug) ? slug : `service_${index + 1}`;
+}
+
+function servicesFrom(profile: BusinessProfile): WorkspaceConfig["services"] {
+	const seen = new Set<string>();
+	return profile.services.flatMap((label, index) => {
+		const key = serviceKey(label, index);
+		if (seen.has(key)) return [];
+		seen.add(key);
+		return [{ key, label, recurring: RECURRING_SERVICE.test(label) }];
+	});
+}
 
 const CHECKLISTS = {
 	web: [
@@ -232,7 +227,7 @@ const CHECKLISTS = {
 } as const satisfies Record<AgencyType, readonly string[]>;
 
 export function templateConfig(profile: BusinessProfile): WorkspaceConfig {
-	const services = SERVICES[profile.agencyType];
+	const services = servicesFrom(profile);
 	const recurring = profile.engagement !== "one-time";
 	const checklist: string[] = [...CHECKLISTS[profile.agencyType]];
 	if (recurring) checklist.push("Begin ongoing support");

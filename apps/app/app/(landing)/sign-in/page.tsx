@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { getSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { PasswordSignIn } from "./password-sign-in";
 import { SocialSignIn } from "./social-sign-in";
 import { type SsoProvider, SsoSignIn } from "./sso-sign-in";
 
@@ -15,6 +16,7 @@ export const metadata: Metadata = {
 type SignInOptions = {
 	google: boolean;
 	microsoft: boolean;
+	emailPassword: boolean;
 	providers: SsoProvider[];
 };
 
@@ -85,7 +87,9 @@ async function SignIn({
 				? configured
 				: [];
 
-	if (!showSso && social.length === 0) {
+	const passwords = options?.emailPassword ?? false;
+
+	if (!showSso && social.length === 0 && !passwords) {
 		return (
 			<>
 				<AuthHeading
@@ -114,6 +118,7 @@ async function SignIn({
 			{social.map((provider) => (
 				<SocialSignIn key={provider} provider={provider} />
 			))}
+			{passwords ? <PasswordSignIn /> : null}
 		</>
 	);
 }
