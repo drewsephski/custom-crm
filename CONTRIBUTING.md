@@ -157,6 +157,14 @@ because the squashed commit body is left empty on purpose — the title is the w
 
 ## Releases
 
+**Release automation is off until the repository variable `RELEASE_AUTOMATION` is `enabled`.** The
+Release workflow still triggers on every push to `main`, and its one job is skipped. Turn it on
+only after both of these are true: the repository setting *Allow GitHub Actions to create and
+approve pull requests* is on (or `AUTOMATION_TOKEN` holds a token that can open pull requests), and
+the `release` branch and its ruleset exist. Without the first one, release-please pushes its branch
+and then fails with `GitHub Actions is not permitted to create or approve pull requests`, on every
+push. The rest of this section describes the automation once it is enabled.
+
 **Shipping is one pull request.** `chore(main): release 0.2.0`, into `main`, opened and kept up to
 date by [release-please](https://github.com/googleapis/release-please) as soon as something
 releasable lands. It accumulates every releasable commit, so a stack of merges is one release

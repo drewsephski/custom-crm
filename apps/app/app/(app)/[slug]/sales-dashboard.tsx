@@ -28,7 +28,7 @@ import {
 	DonutStat,
 	type SeriesConfig,
 } from "@/components/dashboard-charts";
-import { dealStageChartColor, dealStageLabel } from "@/lib/deal-stage";
+import { dealStageChartColor } from "@/lib/deal-stage";
 import type { RouterOutputs } from "@/lib/trpc/types";
 import { useWorkspaceUrl } from "@/lib/use-workspace-url";
 
@@ -73,15 +73,15 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 
 	const hasTrend = trend.some((point) => point.won > 0 || point.created > 0);
 
-	const stageSlices = pipeline.stages.flatMap((stage) =>
-		stage.valueCents > 0
+	const stageSlices = pipeline.stages.flatMap((bucket, index) =>
+		bucket.valueCents > 0
 			? [
 					{
-						key: stage.stage,
-						label: dealStageLabel(stage.stage),
-						value: stage.valueCents,
-						color: dealStageChartColor(stage.stage),
-						count: stage.count,
+						key: bucket.stage.id,
+						label: bucket.stage.label,
+						value: bucket.valueCents,
+						color: dealStageChartColor(index),
+						count: bucket.count,
 					},
 				]
 			: [],
@@ -210,7 +210,7 @@ export function SalesDashboard({ summary }: { summary: Summary }) {
 								{stageSlices.map((slice) => (
 									<li key={slice.key} className="border-t first:border-t-0">
 										<Link
-											href={`${workspaceUrl("/deals")}?stage=${slice.key}`}
+											href={`${workspaceUrl("/deals")}?view=table&stage=${slice.key}`}
 											className="flex items-center gap-2.5 py-2 text-xs hover:underline"
 										>
 											<ChartSwatch color={slice.color} size="sm" />

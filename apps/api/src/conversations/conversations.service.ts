@@ -1,3 +1,4 @@
+import { slackAccountOfWorkspace } from "@crm/auth/organization";
 import {
 	AgentConversationPermissionMode,
 	type Db,
@@ -223,7 +224,7 @@ export class ConversationsService {
 				},
 			}),
 			this.db.account.findFirst({
-				where: { providerId: "slack", accessToken: { not: null } },
+				where: slackAccountOfWorkspace(),
 				select: { id: true },
 			}),
 		]);

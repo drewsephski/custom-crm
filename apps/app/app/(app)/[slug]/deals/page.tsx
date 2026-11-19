@@ -14,8 +14,10 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { CreateDealSheet } from "./create-deal-sheet";
+import { DealsBoard } from "./deals-board";
 import { dealsSearchParams } from "./deals-search-params";
 import { DealsTable } from "./deals-table";
+import { loadDealView } from "./deals-view";
 
 export const metadata: Metadata = {
 	title: "Deals",
@@ -30,7 +32,8 @@ export default function DealsPage({
 				<PageShellHeading>
 					<PageShellTitle>Deals</PageShellTitle>
 					<PageShellDescription>
-						The pipeline, and everything that has already closed.
+						Your pipeline, stage by stage, and everything that has already
+						closed.
 					</PageShellDescription>
 				</PageShellHeading>
 				<PageShellActions>
@@ -50,24 +53,29 @@ export default function DealsPage({
 async function Deals({
 	searchParams,
 }: Pick<PageProps<"/[slug]/deals">, "searchParams">) {
-	const [, values] = await Promise.all([
+	const [, values, { view }] = await Promise.all([
 		requireSession(),
 		dealsSearchParams.load(searchParams),
+		loadDealView(searchParams),
 	]);
 
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
+	const input = dealsSearchParams.toInput(values);
 	await Promise.all([
-		queryClient.prefetchQuery(
-			trpc.deals.list.queryOptions(dealsSearchParams.toInput(values)),
-		),
+		view === "board"
+			? queryClient.prefetchQuery(
+					trpc.deals.board.queryOptions({ q: input.q, owner: input.owner }),
+				)
+			: queryClient.prefetchQuery(trpc.deals.list.queryOptions(input)),
+		queryClient.prefetchQuery(trpc.pipeline.active.queryOptions()),
 		queryClient.prefetchQuery(trpc.users.list.queryOptions()),
 		queryClient.prefetchQuery(trpc.companies.options.queryOptions({ q: "" })),
 	]);
 
 	return (
 		<HydrateClient>
-			<DealsTable />
+			{view === "board" ? <DealsBoard /> : <DealsTable />}
 		</HydrateClient>
 	);
 }

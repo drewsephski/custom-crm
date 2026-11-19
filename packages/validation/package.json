@@ -19,6 +19,7 @@
 		"./eve-tool": "./src/eve-tool.ts",
 		"./field-backfill": "./src/field-backfill.ts",
 		"./field-templates": "./src/field-templates.ts",
+		"./pipeline": "./src/pipeline.ts",
 		"./saved-view": "./src/saved-view.ts",
 		"./search-config": "./src/search-config.ts",
 		"./workspace-config": "./src/workspace-config.ts"

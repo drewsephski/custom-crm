@@ -1,15 +1,12 @@
-import { ActivityType, db, EmailDirection } from "@crm/db";
-import { z } from "zod";
+import { ActivityType, db, EmailDirection, StageOutcome } from "@crm/db";
+import { readStageChangeMeta } from "@crm/validation/pipeline";
 import { isDerivedName } from "./names";
 
 const BODY_LIMIT = 4000;
 
-const stageChangeMeta = z
-	.object({
-		from: z.string().nullable().catch(null),
-		to: z.string().nullable().catch(null),
-	})
-	.catch({ from: null, to: null });
+const STAGE_SELECT = { label: true, outcome: true } as const;
+
+type StageRead = { label: string; outcome: StageOutcome };
 
 export type AccountThread = {
 	subject: string | null;
@@ -157,7 +154,7 @@ export async function readCompanyHistory(
 				select: {
 					id: true,
 					name: true,
-					stage: true,
+					stage: { select: STAGE_SELECT },
 					amount: true,
 					currency: true,
 					expectedCloseDate: true,
@@ -352,7 +349,7 @@ export async function readDealHistory(
 			id: true,
 			name: true,
 			description: true,
-			stage: true,
+			stage: { select: STAGE_SELECT },
 			stageChangedAt: true,
 			amount: true,
 			currency: true,
@@ -474,7 +471,7 @@ export async function readDealHistory(
 			id: deal.id,
 			name: deal.name,
 			description: deal.description,
-			stage: deal.stage,
+			stage: deal.stage.label,
 			open: isOpen(deal.stage),
 			daysInStage: daysSince(deal.stageChangedAt, now),
 			stageChangedAt: deal.stageChangedAt.toISOString(),
@@ -495,10 +492,10 @@ export async function readDealHistory(
 			role,
 		})),
 		stageHistory: stageChanges.map((change) => {
-			const meta = stageChangeMeta.parse(change.meta);
+			const meta = readStageChangeMeta(change.meta);
 			return {
-				from: meta.from,
-				to: meta.to,
+				from: meta?.from?.label ?? null,
+				to: meta?.to.label ?? null,
 				at: change.createdAt.toISOString(),
 			};
 		}),
@@ -529,12 +526,8 @@ export async function readDealHistory(
 	};
 }
 
-function isOpen(stage: string): boolean {
-	return (
-		stage !== "CLOSED_WON" &&
-		stage !== "CLOSED_LOST" &&
-		stage !== "UNQUALIFIED_TO_BUY"
-	);
+function isOpen(stage: StageRead): boolean {
+	return stage.outcome === StageOutcome.OPEN;
 }
 
 async function recentNotes(
@@ -621,7 +614,7 @@ function toAccountMeeting(
 function toCompanyDeal(deal: {
 	id: string;
 	name: string;
-	stage: string;
+	stage: StageRead;
 	amount: unknown;
 	currency: string;
 	expectedCloseDate: Date | null;
@@ -634,7 +627,7 @@ function toCompanyDeal(deal: {
 	return {
 		id: deal.id,
 		name: deal.name,
-		stage: deal.stage,
+		stage: deal.stage.label,
 		open: isOpen(deal.stage),
 		amount: deal.amount === null ? null : Number(deal.amount),
 		currency: deal.currency,

@@ -1,20 +1,18 @@
 "use client";
 
-import { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import { Checkbox } from "@crm/ui/components/checkbox";
 import { Icon } from "@crm/ui/components/icon";
 import { StatusIndicator } from "@crm/ui/components/status-indicator";
 import { cn } from "@crm/ui/lib/utils";
+import { readStageChangeMeta } from "@crm/validation/pipeline";
 import { useMutation } from "@tanstack/react-query";
 import { PencilIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { RecordLink } from "@/components/crm/record-sheet/record-link";
 import { LocalDateTime, LocalDay } from "@/components/local-date-time";
 import { activityLabel } from "@/lib/activity-presentation";
-import { dealStageLabel } from "@/lib/deal-stage";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import type { RouterOutputs } from "@/lib/trpc/types";
@@ -31,11 +29,6 @@ const TIME_OPTIONS: Intl.DateTimeFormatOptions = {
 	hour: "numeric",
 	minute: "2-digit",
 };
-
-const stageChange = z
-	.object({ from: z.enum(DealStage), to: z.enum(DealStage) })
-	.nullable()
-	.catch(null);
 
 function anchorId(anchor: TimelineAnchor): string {
 	if ("companyId" in anchor) return anchor.companyId;
@@ -88,7 +81,7 @@ export function TimelineEntry({
 	}
 
 	const change =
-		entry.type === "STAGE_CHANGE" ? stageChange.parse(entry.meta) : null;
+		entry.type === "STAGE_CHANGE" ? readStageChangeMeta(entry.meta) : null;
 	const when = entry.occurredAt ?? entry.createdAt;
 
 	const synced = entry.meta?.synced === true;
@@ -99,7 +92,9 @@ export function TimelineEntry({
 		: entry.createdBy.name;
 
 	const headline = change
-		? `${dealStageLabel(change.from)} → ${dealStageLabel(change.to)}`
+		? change.from
+			? `${change.from.label} → ${change.to.label}`
+			: change.to.label
 		: entry.subject;
 
 	const here = anchorId(anchor);

@@ -8,6 +8,7 @@ import {
 	type RecordSource,
 } from "@crm/db";
 import type { FieldDefinitionWithOptions } from "@crm/db/fields";
+import { STAGE_SELECT } from "@crm/db/pipeline";
 import { requireOrganizationId } from "@crm/db/tenancy";
 import {
 	ConflictException,
@@ -206,7 +207,7 @@ export class ContactsService {
 							select: {
 								id: true,
 								name: true,
-								stage: true,
+								stage: { select: STAGE_SELECT },
 								amount: true,
 								currency: true,
 								expectedCloseDate: true,

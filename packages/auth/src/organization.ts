@@ -117,6 +117,35 @@ export function canRemoveMember(
 	return actor === "owner" || target !== "owner";
 }
 
+export function memberOfWorkspace(
+	organizationId: string = requireOrganizationId(),
+) {
+	return { members: { some: { organizationId } } };
+}
+
+export function connectionManagerOfWorkspace(
+	organizationId: string = requireOrganizationId(),
+) {
+	return {
+		members: {
+			some: {
+				organizationId,
+				role: { in: WORKSPACE_ROLES.filter(canManageConnections) },
+			},
+		},
+	};
+}
+
+export function slackAccountOfWorkspace(
+	organizationId: string = requireOrganizationId(),
+) {
+	return {
+		providerId: "slack",
+		accessToken: { not: null },
+		user: connectionManagerOfWorkspace(organizationId),
+	};
+}
+
 export type WorkspaceMemberReader = Pick<Db, "member">;
 
 export type Membership = {

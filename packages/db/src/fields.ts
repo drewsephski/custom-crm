@@ -13,6 +13,7 @@ import type {
 	FieldOptionModel,
 	FieldValueModel,
 } from "./generated/prisma/models";
+import { requireOrganizationId } from "./tenancy";
 
 export * from "./fields-shape";
 
@@ -244,7 +245,10 @@ export type FieldWriter = {
 	};
 	user: {
 		findMany(args: {
-			where: { id: { in: string[] } };
+			where: {
+				id: { in: string[] };
+				members: { some: { organizationId: string } };
+			};
 			select: { id: true };
 		}): Promise<{ id: string }[]>;
 	};
@@ -313,7 +317,10 @@ async function assertUsersExist(
 	if (wanted.length === 0) return;
 
 	const known = await tx.user.findMany({
-		where: { id: { in: [...new Set(wanted.map((write) => write.stored))] } },
+		where: {
+			id: { in: [...new Set(wanted.map((write) => write.stored))] },
+			members: { some: { organizationId: requireOrganizationId() } },
+		},
 		select: { id: true },
 	});
 

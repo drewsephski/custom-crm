@@ -15,7 +15,6 @@ import { usePrefetchRecord } from "@/components/crm/record-sheet/record-prefetch
 import { useOpenRecord } from "@/components/crm/record-sheet/record-stack";
 import { LocalDay } from "@/components/local-date-time";
 import type { DealListItem, DealListResult } from "@/lib/agent-transcript";
-import { DEAL_STAGE_OPTIONS } from "@/lib/deal-stage";
 
 const COLUMNS: SimpleTableColumn[] = [
 	{ id: "deal", header: "Deal", width: "w-[20%]" },
@@ -83,7 +82,7 @@ export function DealListResultTable({ result }: { result: DealListResult }) {
 									<CompanyCell company={deal.company} />
 								</TableCell>
 								<TableCell className="overflow-hidden px-3 py-3">
-									<Stage stage={deal.stage} />
+									<Stage stage={deal.stage} outcome={deal.stageOutcome} />
 								</TableCell>
 								<TableCell className="overflow-hidden px-3 py-3 text-right">
 									{deal.amount === null ? (
@@ -138,12 +137,15 @@ export function DealListResultTable({ result }: { result: DealListResult }) {
 	);
 }
 
-function Stage({ stage }: { stage: string }) {
-	const option = DEAL_STAGE_OPTIONS.find(
-		(candidate) => candidate.value === stage,
-	);
-	return option ? (
-		<DealStageIndicator stage={option.value} />
+function Stage({
+	stage,
+	outcome,
+}: {
+	stage: string;
+	outcome: DealListItem["stageOutcome"];
+}) {
+	return outcome ? (
+		<DealStageIndicator stage={{ label: stage, outcome }} />
 	) : (
 		<span className="text-muted-foreground">{humaniseStage(stage)}</span>
 	);
@@ -173,6 +175,7 @@ function tableMeta(result: DealListResult): string[] {
 }
 
 function humaniseStage(stage: string): string {
+	if (!/^[A-Z0-9_]+$/.test(stage)) return stage;
 	return stage
 		.toLowerCase()
 		.split("_")

@@ -1,5 +1,5 @@
 import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
-import { ensureWorkspaceMembership } from "@crm/auth/organization";
+import { defaultOrganizationFor } from "@crm/auth/organization";
 import { db } from "@crm/db";
 import { DEV_SESSION } from "./dev-session-config";
 import {
@@ -55,10 +55,7 @@ const user = await db.user.upsert({
 	update: {},
 });
 
-const workspaceId = await ensureWorkspaceMembership(user.id);
-if (!workspaceId) {
-	throw new Error("Could not enrol the development user in the workspace.");
-}
+const workspaceId = await defaultOrganizationFor(user.id);
 
 const token = `dev-session-${user.id}`;
 const expiresAt = new Date(

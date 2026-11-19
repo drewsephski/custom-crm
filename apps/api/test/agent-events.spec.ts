@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { PipelineService } from "../src/pipeline/pipeline.service";
 
 const suffix = crypto.randomUUID();
 const dealId = `event-deal-${suffix}`;
@@ -14,7 +16,15 @@ const service = new AgentTriggerService(db);
 const stamp = new ActivityStampService(db);
 const conversion = new ConversionService(db);
 const fields = new FieldsService(db, service);
-const deals = new DealsService(db, service, stamp, conversion, fields);
+const deals = new DealsService(
+	db,
+	service,
+	stamp,
+	conversion,
+	fields,
+	new PipelineService(db),
+);
+let stages: Record<string, string> = {};
 const channelId = `event-channel-${suffix}`;
 const ownerId = `event-owner-${suffix}`;
 const domain = `event-${suffix}.example.test`;
@@ -23,6 +33,7 @@ let persistedDealId = "";
 let previousBridgeSecret: string | undefined;
 
 beforeAll(async () => {
+	stages = await testStageIds(TEST_ORGANIZATION.id);
 	previousBridgeSecret = process.env.AGENT_BRIDGE_SECRET;
 	delete process.env.AGENT_BRIDGE_SECRET;
 	await db.agentTask.deleteMany({
@@ -116,13 +127,13 @@ describe("CRM agent events", () => {
 				type: "deal.created",
 				record: { kind: "deal", id: dealId },
 				occurredAt: createdAt,
-				data: { companyId, stage: "DEMO_BOOKED" },
+				data: { companyId, stage: "New Inquiry" },
 			});
 			await emit({
 				type: "deal.closed",
 				record: { kind: "deal", id: dealId },
 				occurredAt: closedAt,
-				data: { companyId, from: "NEGOTIATION", to: "CLOSED_WON" },
+				data: { companyId, from: "Negotiation", to: "Won" },
 			});
 		});
 
@@ -144,7 +155,7 @@ describe("CRM agent events", () => {
 				type: "deal.created",
 				record: { kind: "deal", id: dealId },
 				occurredAt: createdAt.toISOString(),
-				data: { companyId, stage: "DEMO_BOOKED" },
+				data: { companyId, stage: "New Inquiry" },
 			},
 			finishedAt: null,
 		});
@@ -155,7 +166,7 @@ describe("CRM agent events", () => {
 				type: "deal.closed",
 				record: { kind: "deal", id: dealId },
 				occurredAt: closedAt.toISOString(),
-				data: { companyId, from: "NEGOTIATION", to: "CLOSED_WON" },
+				data: { companyId, from: "Negotiation", to: "Won" },
 			},
 			finishedAt: null,
 		});
@@ -223,15 +234,18 @@ describe("CRM agent events", () => {
 		persistedDealId = deal.id;
 
 		const transitions = await Promise.all([
-			deals.setStage({ id: deal.id, stage: "CLOSED_WON" }, ownerId),
-			deals.setStage({ id: deal.id, stage: "CLOSED_WON" }, ownerId),
+			deals.setStage({ id: deal.id, stageId: stages.won ?? "" }, ownerId),
+			deals.setStage({ id: deal.id, stageId: stages.won ?? "" }, ownerId),
 		]);
 
 		expect(transitions.map((transition) => transition.changed).sort()).toEqual([
 			false,
 			true,
 		]);
-		await deals.setStage({ id: deal.id, stage: "QUALIFIED_TO_BUY" }, ownerId);
+		await deals.setStage(
+			{ id: deal.id, stageId: stages.qualified ?? "" },
+			ownerId,
+		);
 
 		const reasons = (
 			await db.agentTask.findMany({

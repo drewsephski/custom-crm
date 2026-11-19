@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DealStage, db } from "@crm/db";
+import { db } from "@crm/db";
+import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
 import { listDeals, searchCrm } from "../agent/lib/lookup";
+
+const stages = await testStageIds(TEST_ORGANIZATION.id);
 
 const suffix = process.env.TEST_RUN_ID ?? "lookup-spec";
 const domain = `northwind-${suffix}.test`;
@@ -77,7 +80,7 @@ beforeAll(async () => {
 			name: `Northwind renewal ${suffix}`,
 			companyId: northwindId,
 			ownerId: user.id,
-			stage: DealStage.QUALIFIED_TO_BUY,
+			stageId: stages.qualified,
 			amount: 12_000,
 			lastActivityAt: new Date("2026-06-01T12:00:00.000Z"),
 		},
@@ -90,7 +93,7 @@ beforeAll(async () => {
 			name: `Fresh expansion ${suffix}`,
 			companyId: northwindId,
 			ownerId: user.id,
-			stage: DealStage.CONTRACT_SENT,
+			stageId: stages.negotiation,
 			lastActivityAt: new Date("2026-08-04T12:00:00.000Z"),
 		},
 		select: { id: true },
@@ -102,7 +105,7 @@ beforeAll(async () => {
 			name: `Closed renewal ${suffix}`,
 			companyId: brightwaterId,
 			ownerId: user.id,
-			stage: DealStage.CLOSED_LOST,
+			stageId: stages.lost,
 			lastActivityAt: new Date("2026-05-01T12:00:00.000Z"),
 		},
 		select: { id: true },
@@ -213,6 +216,9 @@ describe("listDeals", () => {
 		expect(ids).not.toContain(freshDealId);
 		expect(ids).not.toContain(closedDealId);
 		expect(result.deals.find((deal) => deal.id === dealId)).toMatchObject({
+			stage: "Qualified",
+			stageKey: "qualified",
+			stageOutcome: "OPEN",
 			daysSinceLastActivity: 65,
 			neverActive: false,
 			company: {
@@ -224,6 +230,18 @@ describe("listDeals", () => {
 			},
 			owner: { image: "https://cdn.example.test/rep-one.png" },
 		});
+	});
+
+	it("reads won and lost from the stage outcome, not a stage name", async () => {
+		const [lost, won] = await Promise.all([
+			listDeals({ status: "lost", limit: 100 }),
+			listDeals({ status: "won", limit: 100 }),
+		]);
+
+		expect(lost.deals.map((deal) => deal.id)).toContain(closedDealId);
+		expect(lost.deals.every((deal) => deal.stageOutcome === "LOST")).toBe(true);
+		expect(won.deals.map((deal) => deal.id)).not.toContain(closedDealId);
+		expect(won.deals.every((deal) => deal.stageOutcome === "WON")).toBe(true);
 	});
 
 	it("paginates a broad deal sweep without repeating a row", async () => {

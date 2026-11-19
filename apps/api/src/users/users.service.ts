@@ -1,3 +1,4 @@
+import { memberOfWorkspace } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import { Injectable } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -15,6 +16,7 @@ export class UsersService {
 
 	async list(): Promise<UserOption[]> {
 		return this.db.user.findMany({
+			where: memberOfWorkspace(),
 			select: { id: true, name: true, email: true, image: true },
 			orderBy: [{ name: "asc" }, { email: "asc" }],
 		});

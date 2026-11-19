@@ -12,6 +12,7 @@ context until you read them, and the rules in them are not optional.
 | `.env`, configuration, which variables exist and why | `docs/environment.md` |
 | UI in `apps/app` or `packages/ui` | `docs/design.md` (below) |
 | Deal amounts, totals, charts, exchange rates | `docs/currency.md` |
+| Deal stages, the Deals board, stage filters, applying a workspace setup | `docs/pipelines.md` |
 | The record sheet's Agent tab | `docs/agent-panel.md` |
 | `/settings/connections`, integrations, the intake endpoint | `docs/connections.md` |
 | The tracking script, the collector, form submissions | `docs/tracking.md` |

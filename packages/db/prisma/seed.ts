@@ -5,11 +5,17 @@ import { resolveFavicon } from "../src/favicon";
 import { fieldKeyFromLabel } from "../src/fields-shape";
 import {
 	ActivityType,
-	DealStage,
 	type FieldEntity,
 	FieldType,
 	RateSource,
+	StageOutcome,
 } from "../src/generated/prisma/enums";
+import {
+	type ActivePipeline,
+	ensureActivePipeline,
+	type StageSnapshot,
+	stageSnapshot,
+} from "../src/pipeline";
 import { readReportingCurrency, settingsKey } from "../src/settings";
 import {
 	requireOrganizationId,
@@ -253,19 +259,6 @@ const TITLES = [
 	"IT Director",
 	"Head of Platform",
 	"Chief of Staff",
-] as const;
-
-const OPEN_STAGES = [
-	DealStage.DEMO_BOOKED,
-	DealStage.QUALIFIED_TO_BUY,
-	DealStage.DECISION_MAKER_BOUGHT_IN,
-	DealStage.CONTRACT_SENT,
-] as const;
-
-const CLOSED_STAGES = [
-	DealStage.CLOSED_WON,
-	DealStage.CLOSED_LOST,
-	DealStage.UNQUALIFIED_TO_BUY,
 ] as const;
 
 const DEAL_DESCRIPTIONS = [
@@ -818,8 +811,15 @@ async function seedDeals(
 	companies: { id: string; name: string }[],
 	contacts: SeededContact[],
 	ownerIds: string[],
+	pipeline: ActivePipeline,
 ): Promise<SeededDeal[]> {
 	const deals: SeededDeal[] = [];
+	const openStages = pipeline.stages.filter(
+		(stage) => stage.outcome === StageOutcome.OPEN,
+	);
+	const closedStages = pipeline.stages.filter(
+		(stage) => stage.outcome !== StageOutcome.OPEN,
+	);
 
 	for (const [index, company] of companies.entries()) {
 		const count = index % 2 === 0 ? 2 : 1;
@@ -827,7 +827,7 @@ async function seedDeals(
 		for (let n = 0; n < count; n++) {
 			const id = `seed-deal-${slug(company.name)}-${n}`;
 			const closed = chance(0.35);
-			const stage = closed ? pick(CLOSED_STAGES) : pick(OPEN_STAGES);
+			const stage = closed ? pick(closedStages) : pick(openStages);
 			const ownerId = pick(ownerIds);
 			const createdDaysAgo = integer(20, 210);
 			const createdAt = daysFromNow(-createdDaysAgo, 12);
@@ -848,7 +848,8 @@ async function seedDeals(
 					description: pick(DEAL_DESCRIPTIONS),
 					companyId: company.id,
 					ownerId,
-					stage,
+					stageId: stage.id,
+					boardPosition: deals.length,
 					stageChangedAt,
 					...(() => {
 						const { amount, currency, baseAmount, baseCurrency, fxRate } =
@@ -869,10 +870,7 @@ async function seedDeals(
 					),
 					closedAt: closed ? stageChangedAt : null,
 					closedReason:
-						stage === DealStage.CLOSED_LOST ||
-						stage === DealStage.UNQUALIFIED_TO_BUY
-							? pick(LOST_REASONS)
-							: null,
+						stage.outcome === StageOutcome.LOST ? pick(LOST_REASONS) : null,
 					createdAt,
 				},
 				update: {},
@@ -905,6 +903,7 @@ async function seedActivities(
 	contacts: SeededContact[],
 	deals: SeededDeal[],
 	ownerIds: string[],
+	pipeline: ActivePipeline,
 ): Promise<number> {
 	const existing = await db.activity.count();
 	if (existing > 0) {
@@ -924,10 +923,22 @@ async function seedActivities(
 		dealId: string | null;
 		createdById: string;
 		createdAt: Date;
-		meta?: { from: DealStage; to: DealStage };
+		meta?: { from: StageSnapshot; to: StageSnapshot };
 	};
 
 	const rows: ActivityRow[] = [];
+
+	const open = pipeline.stages.filter(
+		(stage) => stage.outcome === StageOutcome.OPEN,
+	);
+	const [first, second = first] = open;
+	const won = pipeline.stages.find(
+		(stage) => stage.outcome === StageOutcome.WON,
+	);
+	if (!first || !second || !won) {
+		throw new Error("The seed pipeline needs an open and a won stage.");
+	}
+	const history = { first, second, won };
 
 	const base = (companyId: string, createdById: string, createdAt: Date) => ({
 		companyId,
@@ -978,8 +989,8 @@ async function seedActivities(
 			dealId: deal.id,
 			subject: "Stage changed",
 			meta: {
-				from: DealStage.DEMO_BOOKED,
-				to: deal.closed ? DealStage.CLOSED_WON : DealStage.QUALIFIED_TO_BUY,
+				from: stageSnapshot(history.first),
+				to: stageSnapshot(deal.closed ? history.won : history.second),
 			},
 		});
 	}
@@ -1060,8 +1071,15 @@ async function seedWorkspace(ownerIds: string[]) {
 	const rates = await seedRates();
 	const companies = await seedCompanies(ownerIds);
 	const contacts = await seedContacts(companies, ownerIds);
-	const deals = await seedDeals(companies, contacts, ownerIds);
-	const activities = await seedActivities(companies, contacts, deals, ownerIds);
+	const pipeline = await db.$transaction((tx) => ensureActivePipeline(tx));
+	const deals = await seedDeals(companies, contacts, ownerIds, pipeline);
+	const activities = await seedActivities(
+		companies,
+		contacts,
+		deals,
+		ownerIds,
+		pipeline,
+	);
 	const companyFields = await seedCompanyFields();
 	await seedCompanyFieldValues(companyFields, companies, ownerIds);
 

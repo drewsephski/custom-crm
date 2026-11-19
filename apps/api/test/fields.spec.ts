@@ -7,6 +7,7 @@ import {
 	it,
 } from "bun:test";
 import { db, type FieldEntity } from "@crm/db";
+import { TEST_ORGANIZATION } from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -17,11 +18,13 @@ import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { PipelineService } from "../src/pipeline/pipeline.service";
 import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "fields-spec";
 const domain = `fields-${suffix}.test`;
 const ownerId = `owner-${suffix}`;
+const outsiderId = `outsider-${suffix}`;
 
 const queued: {
 	entity: FieldEntity;
@@ -68,7 +71,14 @@ const contacts = new ContactsService(
 	stamp,
 	fields,
 );
-const deals = new DealsService(db, agent, stamp, conversion, fields);
+const deals = new DealsService(
+	db,
+	agent,
+	stamp,
+	conversion,
+	fields,
+	new PipelineService(db),
+);
 
 let companyId: string;
 let bridgeSecret: string | undefined;
@@ -104,7 +114,7 @@ async function clean() {
 		where: { key: { startsWith: "spec_" } },
 	});
 	await db.company.deleteMany({ where: { domain: { endsWith: domain } } });
-	await db.user.deleteMany({ where: { id: ownerId } });
+	await db.user.deleteMany({ where: { id: { in: [ownerId, outsiderId] } } });
 }
 
 async function makeCompany(name: string): Promise<string> {
@@ -124,6 +134,22 @@ beforeAll(async () => {
 
 	await db.user.create({
 		data: { id: ownerId, name: "Fields Rep", email: `rep@${domain}` },
+	});
+	await db.user.create({
+		data: {
+			id: outsiderId,
+			name: "Another Agency",
+			email: `outsider@${domain}`,
+		},
+	});
+	await db.member.create({
+		data: {
+			id: `member-${ownerId}`,
+			organizationId: TEST_ORGANIZATION.id,
+			userId: ownerId,
+			role: "member",
+			createdAt: new Date(),
+		},
 	});
 
 	companyId = await makeCompany("fields-co");
@@ -411,6 +437,12 @@ describe("field values", () => {
 		expect(refused?.message).toMatch(/works here/);
 
 		expect(await db.fieldValue.count({ where: { companyId: record } })).toBe(0);
+
+		await expect(
+			fields.applyValues(db, "COMPANY", record, {
+				spec_champion: outsiderId,
+			}),
+		).rejects.toThrow(/works here/);
 
 		await fields.applyValues(db, "COMPANY", record, {
 			spec_champion: ownerId,

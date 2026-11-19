@@ -1,6 +1,5 @@
 "use client";
 
-import type { DealStage } from "@crm/db/enums";
 import { Button } from "@crm/ui/components/button";
 import {
 	Dialog,
@@ -26,7 +25,8 @@ import { ChevronDownIcon } from "lucide-react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
-import { DEAL_STAGE_OPTIONS, LOSING_STAGES } from "@/lib/deal-stage";
+import { isLostStage, type StageLike } from "@/lib/deal-stage";
+import { usePipeline } from "@/lib/pipeline";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
 import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
@@ -36,6 +36,16 @@ const closeReasonParams = {
 	[SEARCH_PARAM.dialog.closeDeal]: parseAsString,
 	[SEARCH_PARAM.dialog.closeStage]: parseAsString,
 };
+
+export function useCloseReason() {
+	const [, setCloseParams] = useQueryStates(closeReasonParams);
+
+	return (dealId: string, stageId: string) =>
+		setCloseParams({
+			[SEARCH_PARAM.dialog.closeDeal]: dealId,
+			[SEARCH_PARAM.dialog.closeStage]: stageId,
+		});
+}
 
 function useStageMutation(onDone?: () => void) {
 	const trpc = useTRPC();
@@ -58,11 +68,12 @@ export function DealStageMenu({
 	variant = "inline",
 }: {
 	dealId: string;
-	stage: DealStage;
+	stage: StageLike & { id: string };
 	variant?: "inline" | "control";
 }) {
-	const [, setCloseParams] = useQueryStates(closeReasonParams);
+	const askWhy = useCloseReason();
 	const setStage = useStageMutation();
+	const { stages, stageById } = usePipeline();
 
 	return (
 		<DropdownMenu>
@@ -94,22 +105,19 @@ export function DealStageMenu({
 				onClick={(event) => event.stopPropagation()}
 			>
 				<DropdownMenuRadioGroup
-					value={stage}
+					value={stage.id}
 					onValueChange={(next) => {
-						const chosen = next as DealStage;
-						if (chosen === stage) return;
-						if (LOSING_STAGES.includes(chosen)) {
-							void setCloseParams({
-								[SEARCH_PARAM.dialog.closeDeal]: dealId,
-								[SEARCH_PARAM.dialog.closeStage]: chosen,
-							});
+						const chosen = stageById(next);
+						if (!chosen || chosen.id === stage.id) return;
+						if (isLostStage(chosen)) {
+							void askWhy(dealId, chosen.id);
 							return;
 						}
-						setStage.mutate({ id: dealId, stage: chosen });
+						setStage.mutate({ id: dealId, stageId: chosen.id });
 					}}
 				>
-					{DEAL_STAGE_OPTIONS.map((option) => (
-						<DropdownMenuRadioItem key={option.value} value={option.value}>
+					{stages.map((option) => (
+						<DropdownMenuRadioItem key={option.id} value={option.id}>
 							{option.label}
 						</DropdownMenuRadioItem>
 					))}
@@ -125,6 +133,7 @@ export function CloseReasonDialog() {
 	const closing = closeValues[SEARCH_PARAM.dialog.closeDeal];
 	const closingStage = closeValues[SEARCH_PARAM.dialog.closeStage];
 	const [reason, setReason] = useState("");
+	const { stageById } = usePipeline();
 
 	const close = () => {
 		setReason("");
@@ -139,7 +148,7 @@ export function CloseReasonDialog() {
 		close();
 	});
 
-	const stage = closingStage as DealStage | null;
+	const stage = stageById(closingStage);
 	const open = Boolean(closing && stage);
 
 	return (
@@ -147,12 +156,11 @@ export function CloseReasonDialog() {
 			<DialogContent>
 				<DialogHeader>
 					<DialogTitle>
-						{stage === "CLOSED_LOST" ? "Close as lost" : "Mark as unqualified"}
+						{stage ? `Move to ${stage.label}` : "Close the deal"}
 					</DialogTitle>
 					<DialogDescription>
-						{stage === "CLOSED_LOST"
-							? "What did we lose it to? This is the only place that answer gets recorded."
-							: "Why is this not a fit? It goes on the timeline so nobody re-runs the same deal."}
+						Why did this deal not go ahead? The reason goes on the timeline, and
+						this is the only place it is recorded.
 					</DialogDescription>
 				</DialogHeader>
 
@@ -162,7 +170,11 @@ export function CloseReasonDialog() {
 					onSubmit={(event) => {
 						event.preventDefault();
 						if (!closing || !stage) return;
-						setStage.mutate({ id: closing, stage, closedReason: reason });
+						setStage.mutate({
+							id: closing,
+							stageId: stage.id,
+							closedReason: reason,
+						});
 					}}
 				>
 					<Field>

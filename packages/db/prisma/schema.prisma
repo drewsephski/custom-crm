@@ -195,10 +195,10 @@ model McpConnection {
   tokenExpiresAt        DateTime?
 
   registrationId String
-  registration   McpClientRegistration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  registration   McpClientRegistration @relation(fields: [registrationId], references: [id], onDelete: NoAction)
 
   connectedById String
-  connectedBy   User   @relation("McpConnectionUser", fields: [connectedById], references: [id], onDelete: Restrict)
+  connectedBy   User   @relation("McpConnectionUser", fields: [connectedById], references: [id], onDelete: NoAction)
 
   connectedAt          DateTime?
   lastSuccessfulCallAt DateTime?
@@ -306,14 +306,54 @@ model RateLimit {
   @@map("rateLimit")
 }
 
-enum DealStage {
-  DEMO_BOOKED
-  QUALIFIED_TO_BUY
-  UNQUALIFIED_TO_BUY
-  DECISION_MAKER_BOUGHT_IN
-  CONTRACT_SENT
-  CLOSED_WON
-  CLOSED_LOST
+enum StageOutcome {
+  OPEN
+  WON
+  LOST
+}
+
+model Pipeline {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id       String  @id @default(cuid())
+  name     String
+  isActive Boolean @default(true)
+
+  stages    PipelineStage[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([organizationId], map: "pipeline_one_active_per_org", where: { isActive: true })
+  @@index([organizationId])
+  @@map("pipeline")
+}
+
+model PipelineStage {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id         String   @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  key         String
+  label       String
+  position    Int
+  outcome     StageOutcome
+  probability Int?
+  isDefault   Boolean      @default(false)
+  inWinRate   Boolean      @default(true)
+
+  deals     Deal[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pipelineId, key])
+  @@unique([pipelineId], map: "pipelineStage_one_default_per_pipeline", where: { isDefault: true })
+  @@index([pipelineId, position])
+  @@index([organizationId])
+  @@map("pipelineStage")
 }
 
 enum ActivityType {
@@ -801,7 +841,7 @@ model AgentConversationSubmission {
   conversation   AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   submittedById String
-  submittedBy   User   @relation("ConversationSubmissionAuthor", fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedBy   User   @relation("ConversationSubmissionAuthor", fields: [submittedById], references: [id], onDelete: NoAction)
 
   clientRequestId String                            @unique
   inputRequestId  String?
@@ -859,7 +899,7 @@ model AgentDefinition {
   status      AgentDefinitionStatus @default(DRAFT)
 
   createdById String
-  createdBy   User   @relation("AgentDefinitionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User   @relation("AgentDefinitionCreator", fields: [createdById], references: [id], onDelete: NoAction)
 
   currentVersionId String?       @unique
   currentVersion   AgentVersion? @relation("CurrentAgentVersion", fields: [currentVersionId, id], references: [id, agentId], onDelete: Restrict)
@@ -890,7 +930,7 @@ model AgentVersion {
   id String @id @default(cuid())
 
   agentId String
-  agent   AgentDefinition @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Restrict)
+  agent   AgentDefinition @relation("AgentVersions", fields: [agentId], references: [id], onDelete: NoAction)
 
   number Int
   status AgentVersionStatus @default(DRAFT)
@@ -906,7 +946,7 @@ model AgentVersion {
   sourceConversation   AgentConversation? @relation("AgentVersionSourceConversation", fields: [sourceConversationId], references: [id], onDelete: SetNull)
 
   createdById String
-  createdBy   User   @relation("AgentVersionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User   @relation("AgentVersionCreator", fields: [createdById], references: [id], onDelete: NoAction)
 
   deploymentId String?
   approvedAt   DateTime?
@@ -962,7 +1002,7 @@ model AgentTrigger {
   id String @id @default(cuid())
 
   agentId String
-  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: NoAction)
 
   versionId String
   version   AgentVersion @relation(fields: [versionId, agentId], references: [id, agentId], onDelete: Restrict)
@@ -972,7 +1012,7 @@ model AgentTrigger {
   config Json
 
   createdById String
-  createdBy   User   @relation("AgentTriggerCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User   @relation("AgentTriggerCreator", fields: [createdById], references: [id], onDelete: NoAction)
 
   enabled   Boolean   @default(false)
   nextRunAt DateTime?
@@ -997,7 +1037,7 @@ model AgentRun {
   id String @id @default(cuid())
 
   agentId String
-  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: NoAction)
 
   versionId String
   version   AgentVersion @relation(fields: [versionId, agentId], references: [id, agentId], onDelete: Restrict)
@@ -1055,7 +1095,7 @@ model AgentRunEvent {
   id String @id @default(cuid())
 
   runId String
-  run   AgentRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  run   AgentRun @relation(fields: [runId], references: [id], onDelete: NoAction)
 
   sequence  Int
   type      String
@@ -1075,7 +1115,7 @@ model AgentAction {
   id String @id @default(cuid())
 
   agentId String
-  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: NoAction)
 
   runId String
   run   AgentRun @relation(fields: [runId, agentId], references: [id, agentId], onDelete: Restrict)
@@ -1117,7 +1157,7 @@ model AgentAuditEvent {
   id String @id @default(cuid())
 
   agentId String
-  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  agent   AgentDefinition @relation(fields: [agentId], references: [id], onDelete: NoAction)
 
   versionId String?
   version   AgentVersion? @relation(fields: [versionId, agentId], references: [id, agentId], onDelete: Restrict)
@@ -1156,10 +1196,12 @@ model Deal {
   ownerId       String
   owner         User                @relation("DealOwner", fields: [ownerId], references: [id])
 
-  stage             DealStage @default(DEMO_BOOKED)
-  stageChangedAt    DateTime  @default(now())
-  amount            Decimal?  @db.Decimal(14, 2)
-  currency          String    @default("USD")
+  stageId           String        @default(dbgenerated("crm_default_stage()"))
+  stage             PipelineStage @relation(fields: [stageId], references: [id], onDelete: NoAction)
+  boardPosition     Float         @default(0)
+  stageChangedAt    DateTime      @default(now())
+  amount            Decimal?      @db.Decimal(14, 2)
+  currency          String        @default("USD")
   expectedCloseDate DateTime?
   closedAt          DateTime?
   closedReason      String?
@@ -1180,7 +1222,7 @@ model Deal {
 
   @@index([companyId])
   @@index([ownerId])
-  @@index([stage])
+  @@index([stageId, boardPosition])
   @@index([expectedCloseDate])
   @@index([lastActivityAt])
   @@index([baseAmount])
@@ -1846,6 +1888,8 @@ model Organization {
   profile                      WorkspaceProfile?
   exchangeRates                ExchangeRate[]
   workspaceConfigVersions      WorkspaceConfigVersion[]
+  pipelines                    Pipeline[]
+  pipelineStages               PipelineStage[]
 
   @@unique([slug])
   @@map("organization")

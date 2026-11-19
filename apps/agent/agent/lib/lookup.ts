@@ -1,5 +1,4 @@
-import { DealStage, db } from "@crm/db";
-import { LOSING_DEAL_STAGES, OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
+import { db, StageOutcome } from "@crm/db";
 import { domainOf, normalise } from "./names";
 
 export type RecordKind = "contact" | "company" | "deal";
@@ -56,6 +55,12 @@ export type DealListOptions = {
 	now?: Date;
 };
 
+const STATUS_OUTCOME = {
+	open: StageOutcome.OPEN,
+	won: StageOutcome.WON,
+	lost: StageOutcome.LOST,
+} as const;
+
 export async function listDeals(options: DealListOptions = {}) {
 	const status = options.status ?? "open";
 	const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
@@ -66,18 +71,11 @@ export async function listDeals(options: DealListOptions = {}) {
 			: new Date(
 					now.getTime() - Math.max(options.inactiveForDays, 0) * 86_400_000,
 				);
-	const stages =
-		status === "open"
-			? [...OPEN_DEAL_STAGES]
-			: status === "won"
-				? [DealStage.CLOSED_WON]
-				: status === "lost"
-					? [...LOSING_DEAL_STAGES]
-					: null;
+	const outcome = status === "all" ? null : STATUS_OUTCOME[status];
 
 	const rows = await db.deal.findMany({
 		where: {
-			stage: stages ? { in: stages } : undefined,
+			stage: outcome ? { outcome } : undefined,
 			companyId: options.companyId ?? undefined,
 			ownerId: options.ownerId ?? undefined,
 			OR: cutoff
@@ -98,7 +96,7 @@ export async function listDeals(options: DealListOptions = {}) {
 		select: {
 			id: true,
 			name: true,
-			stage: true,
+			stage: { select: { label: true, key: true, outcome: true } },
 			amount: true,
 			currency: true,
 			createdAt: true,
@@ -134,7 +132,9 @@ export async function listDeals(options: DealListOptions = {}) {
 			return {
 				id: deal.id,
 				name: deal.name,
-				stage: deal.stage,
+				stage: deal.stage.label,
+				stageKey: deal.stage.key,
+				stageOutcome: deal.stage.outcome,
 				amount: deal.amount === null ? null : Number(deal.amount),
 				currency: deal.currency,
 				company: deal.company,
@@ -309,7 +309,7 @@ async function searchDeals(
 		select: {
 			id: true,
 			name: true,
-			stage: true,
+			stage: { select: { label: true, key: true, outcome: true } },
 			amount: true,
 			currency: true,
 			company: { select: { id: true, name: true } },
@@ -323,7 +323,7 @@ async function searchDeals(
 				kind: "deal" as const,
 				id: row.id,
 				name: row.name,
-				stage: row.stage,
+				stage: row.stage.label,
 				amount: row.amount === null ? null : Number(row.amount),
 				currency: row.currency,
 				company: row.company,

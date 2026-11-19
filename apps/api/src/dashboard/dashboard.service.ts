@@ -1,11 +1,12 @@
-import { ActivityType, type Db, DealStage } from "@crm/db";
-import { OPEN_DEAL_STAGES } from "@crm/db/deal-stage";
+import { ActivityType, type Db, StageOutcome } from "@crm/db";
+import { OPEN_DEALS, STAGE_SELECT } from "@crm/db/pipeline";
 import { activityMeta } from "@crm/validation/activity-meta";
 import { Injectable } from "@nestjs/common";
 import { taskDayBoundaries } from "../activities/task-due-date";
 import { toCents } from "../crm/values";
 import { ConversionService } from "../currency/conversion.service";
 import { InjectDatabase } from "../database/database.constants";
+import { PipelineService } from "../pipeline/pipeline.service";
 import type { DashboardSummaryInput } from "./dashboard.contracts";
 
 const OWNER_SELECT = {
@@ -36,6 +37,7 @@ export class DashboardService {
 	constructor(
 		@InjectDatabase() private readonly db: Db,
 		private readonly conversion: ConversionService,
+		private readonly pipeline: PipelineService,
 	) {}
 
 	async summary(actingUserId: string, input: DashboardSummaryInput) {
@@ -53,6 +55,8 @@ export class DashboardService {
 		const base = await this.conversion.reportingCurrency();
 		const counted = this.conversion.countedWhere(base);
 
+		const pipeline = await this.pipeline.active();
+
 		const [
 			openByStage,
 			openValueByStage,
@@ -64,15 +68,13 @@ export class DashboardService {
 			unconverted,
 		] = await Promise.all([
 			this.db.deal.groupBy({
-				by: ["stage"],
-				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
+				by: ["stageId"],
+				where: { ...owned, ...OPEN_DEALS },
 				_count: { _all: true },
 			}),
 			this.db.deal.groupBy({
-				by: ["stage"],
-				where: {
-					AND: [{ ...owned, stage: { in: [...OPEN_DEAL_STAGES] } }, counted],
-				},
+				by: ["stageId"],
+				where: { AND: [{ ...owned, ...OPEN_DEALS }, counted] },
 				_sum: { baseAmount: true },
 			}),
 			this.db.deal.findMany({
@@ -86,7 +88,7 @@ export class DashboardService {
 				select: {
 					baseAmount: true,
 					baseCurrency: true,
-					stage: true,
+					stage: { select: { outcome: true, inWinRate: true } },
 					createdAt: true,
 					closedAt: true,
 				},
@@ -96,7 +98,7 @@ export class DashboardService {
 					AND: [
 						{
 							...owned,
-							stage: { in: [...OPEN_DEAL_STAGES] },
+							...OPEN_DEALS,
 							expectedCloseDate: { gte: startOfMonth, lt: startOfNextMonth },
 						},
 						counted,
@@ -106,7 +108,7 @@ export class DashboardService {
 				_sum: { baseAmount: true },
 			}),
 			this.db.deal.findMany({
-				where: { ...owned, stage: { in: [...OPEN_DEAL_STAGES] } },
+				where: { ...owned, ...OPEN_DEALS },
 				orderBy: [
 					{ baseAmount: { sort: "desc", nulls: "last" } },
 					{ expectedCloseDate: "asc" },
@@ -115,7 +117,7 @@ export class DashboardService {
 				select: {
 					id: true,
 					name: true,
-					stage: true,
+					stage: { select: STAGE_SELECT },
 					amount: true,
 					currency: true,
 					baseAmount: true,
@@ -170,15 +172,24 @@ export class DashboardService {
 			this.conversion.unconverted(owned),
 		]);
 
-		const stages = OPEN_DEAL_STAGES.map((stage) => {
-			const group = openByStage.find((row) => row.stage === stage);
-			const value = openValueByStage.find((row) => row.stage === stage);
-			return {
-				stage: stage as DealStage,
-				count: group?._count._all ?? 0,
-				valueCents: toCents(value?._sum.baseAmount ?? null) ?? 0,
-			};
-		});
+		const stages = pipeline.stages
+			.filter((stage) => stage.outcome === StageOutcome.OPEN)
+			.map((stage) => {
+				const group = openByStage.find((row) => row.stageId === stage.id);
+				const value = openValueByStage.find((row) => row.stageId === stage.id);
+				return {
+					stage: {
+						id: stage.id,
+						key: stage.key,
+						label: stage.label,
+						outcome: stage.outcome,
+						position: stage.position,
+						probability: stage.probability,
+					},
+					count: group?._count._all ?? 0,
+					valueCents: toCents(value?._sum.baseAmount ?? null) ?? 0,
+				};
+			});
 
 		const firstBucket = monthKey(trendStart);
 		const trend = Array.from({ length: TREND_MONTHS }, (_, index) => ({
@@ -205,7 +216,7 @@ export class DashboardService {
 
 			const { closedAt, stage } = deal;
 			if (!closedAt) continue;
-			const won = stage === DealStage.CLOSED_WON;
+			const won = stage.outcome === StageOutcome.WON;
 
 			if (won) {
 				const closed = trend[monthKey(closedAt) - firstBucket];
@@ -228,7 +239,7 @@ export class DashboardService {
 					wonCents += cents;
 				}
 				cycleDays += (closedAt.getTime() - deal.createdAt.getTime()) / DAY_MS;
-			} else if (stage === DealStage.CLOSED_LOST) {
+			} else if (stage.outcome === StageOutcome.LOST && stage.inWinRate) {
 				losses += 1;
 			}
 		}

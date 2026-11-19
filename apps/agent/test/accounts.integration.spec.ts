@@ -1,6 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { ActivityType, DealStage, db, EmailDirection } from "@crm/db";
+import { ActivityType, db, EmailDirection } from "@crm/db";
+import { stageSnapshot } from "@crm/db/pipeline";
+import { ensureTestPipeline, TEST_ORGANIZATION } from "@crm/db/testing";
 import { readCompanyHistory, readDealHistory } from "../agent/lib/accounts";
+
+const pipeline = await ensureTestPipeline(TEST_ORGANIZATION.id);
+
+function stageOf(key: string) {
+	const stage = pipeline.stages.find((candidate) => candidate.key === key);
+	if (!stage) throw new Error(`No stage ${key}.`);
+	return stage;
+}
 
 const suffix = process.env.TEST_RUN_ID ?? "accounts-spec";
 const domain = `fernhill-${suffix}.test`;
@@ -69,7 +79,7 @@ beforeAll(async () => {
 			name: `Fernhill platform ${suffix}`,
 			companyId,
 			ownerId: userId,
-			stage: DealStage.CONTRACT_SENT,
+			stageId: stageOf("negotiation").id,
 			stageChangedAt: daysAgo(42),
 			amount: 48_000,
 			currency: "USD",
@@ -90,7 +100,10 @@ beforeAll(async () => {
 				dealId,
 				createdById: userId,
 				createdAt: daysAgo(60),
-				meta: { from: "DEMO_BOOKED", to: "QUALIFIED_TO_BUY" },
+				meta: {
+					from: stageSnapshot(stageOf("new_inquiry")),
+					to: stageSnapshot(stageOf("qualified")),
+				},
 			},
 			{
 				type: ActivityType.STAGE_CHANGE,
@@ -99,7 +112,10 @@ beforeAll(async () => {
 				dealId,
 				createdById: userId,
 				createdAt: daysAgo(42),
-				meta: { from: "QUALIFIED_TO_BUY", to: "CONTRACT_SENT" },
+				meta: {
+					from: stageSnapshot(stageOf("qualified")),
+					to: stageSnapshot(stageOf("negotiation")),
+				},
 			},
 			{
 				type: ActivityType.NOTE,
@@ -227,7 +243,7 @@ describe("readCompanyHistory", () => {
 		const history = await readCompanyHistory(companyId);
 		const deal = history?.deals.find((row) => row.id === dealId);
 
-		expect(deal?.stage).toBe("CONTRACT_SENT");
+		expect(deal?.stage).toBe("Negotiation");
 		expect(deal?.open).toBe(true);
 		expect(deal?.amount).toBe(48_000);
 		expect(deal?.contacts).toEqual([
@@ -285,7 +301,7 @@ describe("readDealHistory", () => {
 	it("reports the stage clock, not just the stage", async () => {
 		const history = await readDealHistory(dealId);
 
-		expect(history?.deal.stage).toBe("CONTRACT_SENT");
+		expect(history?.deal.stage).toBe("Negotiation");
 		expect(history?.deal.open).toBe(true);
 		expect(history?.deal.daysInStage).toBeGreaterThanOrEqual(41);
 	});
@@ -294,8 +310,8 @@ describe("readDealHistory", () => {
 		const history = await readDealHistory(dealId);
 
 		expect(history?.stageHistory.map((change) => change.to)).toEqual([
-			"QUALIFIED_TO_BUY",
-			"CONTRACT_SENT",
+			"Qualified",
+			"Negotiation",
 		]);
 	});
 

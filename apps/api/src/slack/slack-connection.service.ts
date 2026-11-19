@@ -1,5 +1,9 @@
 import { isSlackConfigured } from "@crm/auth/env";
-import { canManageConnections } from "@crm/auth/organization";
+import {
+	canManageConnections,
+	connectionManagerOfWorkspace,
+	slackAccountOfWorkspace,
+} from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
 import { SLACK_INVENTORY } from "@crm/db/slack-inventory";
 import { requireOrganizationId } from "@crm/db/tenancy";
@@ -44,13 +48,7 @@ export class SlackConnectionService {
 		const role = await this.access.assertMember(userId);
 		const [account, agents, matches, memberCount, grant] = await Promise.all([
 			this.db.account.findFirst({
-				where: {
-					providerId: "slack",
-					user: {
-						members: { some: { organizationId: requireOrganizationId() } },
-					},
-					accessToken: { not: null },
-				},
+				where: slackAccountOfWorkspace(),
 				orderBy: { updatedAt: "desc" },
 				select: { accountId: true, updatedAt: true, scope: true },
 			}),
@@ -170,13 +168,7 @@ export class SlackConnectionService {
 	async refreshPeople(userId: string): Promise<SlackRefreshPeopleResult> {
 		await this.access.assertMember(userId);
 		const account = await this.db.account.findFirst({
-			where: {
-				providerId: "slack",
-				user: {
-					members: { some: { organizationId: requireOrganizationId() } },
-				},
-				accessToken: { not: null },
-			},
+			where: slackAccountOfWorkspace(),
 			orderBy: { updatedAt: "desc" },
 			select: { id: true },
 		});
@@ -235,13 +227,7 @@ export class SlackConnectionService {
 		const [account, lastFill] = emptyInventory
 			? await Promise.all([
 					this.db.account.findFirst({
-						where: {
-							providerId: "slack",
-							user: {
-								members: { some: { organizationId: requireOrganizationId() } },
-							},
-							accessToken: { not: null },
-						},
+						where: slackAccountOfWorkspace(),
 						orderBy: { updatedAt: "desc" },
 						select: { updatedAt: true },
 					}),
@@ -344,7 +330,10 @@ export class SlackConnectionService {
 
 		const removed = await this.db.$transaction(async (tx) => {
 			const accounts = await tx.account.deleteMany({
-				where: { providerId: "slack" },
+				where: {
+					providerId: "slack",
+					user: connectionManagerOfWorkspace(),
+				},
 			});
 			await tx.slackChannel.deleteMany({});
 			await tx.slackWorkspaceGrant.deleteMany({});

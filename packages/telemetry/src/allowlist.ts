@@ -57,7 +57,7 @@ export const ALLOWED_PROPERTIES = [
 	"activities_bucket",
 	"contacts_by_source",
 	"companies_by_source",
-	"deals_by_stage",
+	"deals_by_outcome",
 	"activities_by_type",
 	"mailbox_sync_configured",
 	"mailbox_sync_status",

@@ -1,3 +1,4 @@
+import { memberOfWorkspace } from "@crm/auth/organization";
 import type { Db } from "@crm/db";
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
@@ -25,8 +26,8 @@ export async function requireOwner(
 ): Promise<void> {
 	if (!ownerId) return;
 
-	const owner = await db.user.findUnique({
-		where: { id: ownerId },
+	const owner = await db.user.findFirst({
+		where: { id: ownerId, ...memberOfWorkspace() },
 		select: { id: true },
 	});
 

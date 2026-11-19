@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { DealStage, db, RateSource } from "@crm/db";
+import { db, RateSource } from "@crm/db";
 import { normalizeCurrency } from "@crm/db/currency";
 import { settingsKey, writeReportingCurrency } from "@crm/db/settings";
-import { TEST_ORGANIZATION } from "@crm/db/testing";
+import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
 import { AgentQueueService } from "../src/agent/agent-queue.service";
 import type { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { CompaniesService } from "../src/companies/companies.service";
@@ -12,6 +12,7 @@ import { ConversionService } from "../src/currency/conversion.service";
 import { DashboardService } from "../src/dashboard/dashboard.service";
 import { DealsService } from "../src/deals/deals.service";
 import { FieldsService } from "../src/fields/fields.service";
+import { PipelineService } from "../src/pipeline/pipeline.service";
 import { withDiscardedCrmEvents } from "./agent-trigger.stub";
 
 const suffix = process.env.TEST_RUN_ID ?? "currency-totals-spec";
@@ -29,8 +30,12 @@ const deals = new DealsService(
 	new ActivityStampService(db),
 	conversion,
 	new FieldsService(db, { fieldBackfill: async () => undefined } as never),
+	new PipelineService(db),
 );
-const dashboard = new DashboardService(db, conversion);
+const dashboard = new DashboardService(db, conversion, new PipelineService(db));
+const stages = await testStageIds(TEST_ORGANIZATION.id);
+const WON = stages.won ?? "";
+const OPEN = stages.new_inquiry ?? "";
 const companies = new CompaniesService(
 	db,
 	agent,
@@ -465,15 +470,15 @@ describe("the dashboard only values what it can convert", () => {
 		await db.user.deleteMany({ where: { id: analystId } });
 	});
 
-	async function stale(name: string, stage: DealStage) {
-		const closed = stage === DealStage.CLOSED_WON;
+	async function stale(name: string, stageId: string) {
+		const closed = stageId === WON;
 
 		return db.deal.create({
 			data: {
 				name: `${name} ${suffix}`,
 				companyId,
 				ownerId: analystId,
-				stage,
+				stageId,
 				amount: 9_000,
 				currency: "USD",
 				baseAmount: 9_000,
@@ -493,10 +498,10 @@ describe("the dashboard only values what it can convert", () => {
 			ownerId: analystId,
 			amountCents: 10_000,
 			currency: "USD",
-			stage: DealStage.CLOSED_WON,
+			stageId: WON,
 		});
 
-		const unvalued = await stale("Stale win", DealStage.CLOSED_WON);
+		const unvalued = await stale("Stale win", WON);
 
 		const summary = await dashboard.summary(analystId, { scope: "me" });
 
@@ -516,7 +521,7 @@ describe("the dashboard only values what it can convert", () => {
 			currency: "USD",
 		});
 
-		const unvalued = await stale("Stale open", DealStage.DEMO_BOOKED);
+		const unvalued = await stale("Stale open", OPEN);
 
 		const summary = await dashboard.summary(analystId, { scope: "me" });
 
@@ -579,7 +584,7 @@ describe("record sheet money", () => {
 					{
 						companyId: company.id,
 						name: "Closed conversion",
-						stage: DealStage.CLOSED_WON,
+						stageId: WON,
 						amount: 2000,
 						currency: "USD",
 						baseAmount: 2000,
