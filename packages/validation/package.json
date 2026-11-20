@@ -18,6 +18,8 @@
 		"./eve-public-event": "./src/eve-public-event.ts",
 		"./eve-tool": "./src/eve-tool.ts",
 		"./field-backfill": "./src/field-backfill.ts",
+		"./onboarding-brand": "./src/onboarding-brand.ts",
+		"./research-result": "./src/research-result.ts",
 		"./field-templates": "./src/field-templates.ts",
 		"./pipeline": "./src/pipeline.ts",
 		"./saved-view": "./src/saved-view.ts",
