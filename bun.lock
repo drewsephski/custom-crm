@@ -26,6 +26,7 @@
         "@crm/telemetry": "workspace:*",
         "@crm/validation": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.32.1",
+        "@prisma/client": "^7.10.1",
         "ai": "^7.0.126",
         "context.dev": "2.10.0",
         "eve": "^0.69.0",

@@ -13,6 +13,7 @@ onTelemetryProblem((message) => console.debug(`[telemetry] ${message}`));
 void syncVersion();
 
 export default defineAgent({
+	build: { externalDependencies: ["@prisma/client"] },
 	model: defaultAgentModel(),
 	modelContextWindowTokens: defaultModel().contextWindowTokens,
 	limits: {
