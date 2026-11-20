@@ -169,7 +169,7 @@ describe("Eve command requests", () => {
 			request(
 				"/eve/v1/session/wrun_01/stream?startIndex=7&includeTailIndex=true&streamControlVersion=1&callback=https://attacker.example",
 			),
-			"http://agent.internal:3001",
+			(path) => new URL(path, "http://agent.internal:3001"),
 		);
 
 		expect(target.toString()).toBe(

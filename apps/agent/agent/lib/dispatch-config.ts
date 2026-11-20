@@ -1,4 +1,5 @@
-const MINUTE_MS = 60_000;
+const SECOND_MS = 1_000;
+const MINUTE_MS = 60 * SECOND_MS;
 
 export const DISPATCH = {
 	workspaceConfig: {
@@ -40,6 +41,11 @@ export const DISPATCH = {
 	reconcile: {
 		scan: 200,
 		retire: 100,
+	},
+
+	self: {
+		path: "/internal/crm/dispatch",
+		timeoutMs: 2 * SECOND_MS,
 	},
 
 	sweep: {

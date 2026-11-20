@@ -1,22 +1,17 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
-	unavailable,
-} from "../lib/capabilities";
+import { CONTEXT_DEV_PEOPLE, enabled, unavailable } from "../lib/capabilities";
 import { spend } from "../lib/focus";
+import { linkedinProfileUrl, linkedinSlugOrHandle } from "../lib/linkedin";
 import { personByProfileUrl } from "../lib/people";
 import { inSessionTenant } from "../lib/tenant-scope";
+import { untrustedOutput } from "../lib/untrusted";
 
 const profileUrl = z
 	.string()
 	.trim()
 	.transform((value, ctx) => {
-		const slug =
-			/linkedin\.com\/in\/([^/?#\s]+)/i.exec(value)?.[1] ??
-			(/^[A-Za-z0-9_-]+$/.test(value) ? value : null);
+		const slug = linkedinSlugOrHandle(value);
 		if (!slug) {
 			ctx.addIssue({
 				code: "custom",
@@ -24,7 +19,7 @@ const profileUrl = z
 			});
 			return z.NEVER;
 		}
-		return `https://www.linkedin.com/in/${slug}`;
+		return linkedinProfileUrl(slug);
 	});
 
 export default defineTool({
@@ -37,8 +32,8 @@ export default defineTool({
 	}),
 	async execute({ profile }, ctx) {
 		return inSessionTenant(ctx, async () => {
-			if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-				return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+			if (!enabled(CONTEXT_DEV_PEOPLE)) {
+				return { found: false as const, ...unavailable(CONTEXT_DEV_PEOPLE) };
 			}
 
 			const parsed = profileUrl.safeParse(profile);
@@ -63,5 +58,8 @@ export default defineTool({
 				sourceUrl: result.person.profileUrl ?? parsed.data,
 			};
 		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, { profile: "a LinkedIn profile" });
 	},
 });

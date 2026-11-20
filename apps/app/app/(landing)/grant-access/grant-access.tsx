@@ -13,6 +13,7 @@ import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import type { FC, SVGProps } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ENTRY_PATH } from "@/lib/auth-redirect";
 import { signOutAndRedirect } from "@/lib/sign-out";
 
 type ProviderGrant = {
@@ -54,7 +55,7 @@ export function GrantAccess({
 		const { error } = await authClient.linkSocial({
 			provider,
 			scopes: [...PROVIDERS[provider].scopes],
-			callbackURL: `${origin}/`,
+			callbackURL: `${origin}${ENTRY_PATH}`,
 			errorCallbackURL: `${origin}/grant-access`,
 		});
 

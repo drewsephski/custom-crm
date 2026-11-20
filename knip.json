@@ -2,7 +2,8 @@
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"workspaces": {
 		".": {
-			"project": ["tools/**/*.ts"],
+			"entry": ["neon.ts", "neon/cron.ts"],
+			"project": ["tools/**/*.ts", "neon.ts", "neon/**/*.ts"],
 			"ignoreIssues": {
 				"tools/oxlint/anti-slop/shared/dictionary-types.ts": [
 					"exports",

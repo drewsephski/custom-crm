@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { extract, type JsonSchema } from "./context-dev";
+import { linkedinProfileUrl, linkedinSlug } from "./linkedin";
 import { namesMatch } from "./names";
-import { personByProfileUrl, slugFromProfileUrl } from "./people";
+import { personByProfileUrl } from "./people";
 
 export type PortraitSource = "linkedin" | "github" | "employer-site";
 
@@ -35,13 +36,14 @@ export async function findPortrait(
 	}
 
 	if (subject.linkedinUrl && contextReady) {
-		const slug = slugFromProfileUrl(subject.linkedinUrl);
+		const slug = linkedinSlug(subject.linkedinUrl);
 		if (slug) {
 			const charge = spend(CONTEXT.people.enrichCost);
 			if (!charge.ok) return { found: false, tried, reason: charge.reason };
 
 			const result = await personByProfileUrl(
-				`https://www.linkedin.com/in/${slug}`,
+				linkedinProfileUrl(slug),
+				subject.id,
 			);
 			if (result.outcome === "found" && result.person.photoUrl) {
 				return {

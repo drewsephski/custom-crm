@@ -1,16 +1,12 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
-	unavailable,
-} from "../lib/capabilities";
+import { CONTEXT_DEV_PEOPLE, enabled, unavailable } from "../lib/capabilities";
 import { CONTEXT } from "../lib/context-config";
-import { spend } from "../lib/focus";
+import { currentFocus, spend } from "../lib/focus";
 import { verdictFor } from "../lib/identity";
 import { personByClues } from "../lib/people";
 import { inSessionTenant } from "../lib/tenant-scope";
+import { untrustedOutput } from "../lib/untrusted";
 
 export default defineTool({
 	description:
@@ -35,20 +31,23 @@ export default defineTool({
 		ctx,
 	) {
 		return inSessionTenant(ctx, async () => {
-			if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-				return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+			if (!enabled(CONTEXT_DEV_PEOPLE)) {
+				return { found: false as const, ...unavailable(CONTEXT_DEV_PEOPLE) };
 			}
 
 			const charge = spend(CONTEXT.people.enrichCost);
 			if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-			const result = await personByClues({
-				email,
-				firstName: firstName ?? null,
-				lastName: lastName ?? null,
-				companyName,
-				companyDomain,
-			});
+			const result = await personByClues(
+				{
+					email,
+					firstName: firstName ?? null,
+					lastName: lastName ?? null,
+					companyName,
+					companyDomain,
+				},
+				currentFocus().contactId ?? undefined,
+			);
 
 			if (result.outcome !== "found") {
 				return { found: false as const, reason: result.reason };
@@ -71,5 +70,8 @@ export default defineTool({
 				note: "One candidate, not proof. Read the verdict before you write anything.",
 			};
 		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, { profile: "a LinkedIn profile" });
 	},
 });

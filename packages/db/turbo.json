@@ -17,7 +17,7 @@
 				"scripts/require-local-db.ts"
 			],
 			"outputs": ["src/generated/**"],
-			"passThroughEnv": ["ALLOW_REMOTE_DB", "DATABASE_URL"]
+			"passThroughEnv": ["DATABASE_URL"]
 		},
 		"db:generate": {
 			"inputs": ["$TURBO_DEFAULT$", "prisma/**"],

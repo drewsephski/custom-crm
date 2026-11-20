@@ -1,3 +1,4 @@
+import { Button } from "@crm/ui/components/button";
 import {
 	PageShell,
 	PageShellActions,
@@ -6,6 +7,7 @@ import {
 	PageShellHeading,
 	PageShellLoading,
 } from "@crm/ui/components/page-shell";
+import Link from "next/link";
 import { Suspense } from "react";
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
@@ -21,7 +23,10 @@ import {
 } from "./overview-scope";
 import { loadOverviewSearchParams } from "./overview-search-params";
 
-export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
+export default function OverviewPage({
+	params,
+	searchParams,
+}: PageProps<"/[slug]">) {
 	return (
 		<PageShell>
 			<PageShellHeader>
@@ -38,6 +43,9 @@ export default function OverviewPage({ searchParams }: PageProps<"/[slug]">) {
 			</PageShellHeader>
 
 			<PageShellContent>
+				<Suspense>
+					<Welcome params={params} searchParams={searchParams} />
+				</Suspense>
 				<Suspense fallback={<PageShellLoading shape="dashboard" />}>
 					<Summary searchParams={searchParams} />
 				</Suspense>
@@ -63,5 +71,18 @@ async function Summary({
 		<HydrateClient>
 			<DashboardSummary />
 		</HydrateClient>
+	);
+}
+
+async function Welcome({ params, searchParams }: PageProps<"/[slug]">) {
+	const [{ slug }, query] = await Promise.all([params, searchParams]);
+	if (query.welcome !== "1") return null;
+	return (
+		<section className="mb-6 grid justify-items-start gap-3">
+			<h2>Your workspace is ready</h2>
+			<Button asChild>
+				<Link href={`/${slug}/companies?new=true`}>Add your first company</Link>
+			</Button>
+		</section>
 	);
 }

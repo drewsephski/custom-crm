@@ -8,7 +8,6 @@ import { AgentTriggerService } from "./agent-trigger.service";
 import { AgentsRouter } from "./agents.router";
 import { AiCapabilityService } from "./ai-capability.service";
 import { DispatchHeartbeatService } from "./dispatch-heartbeat.service";
-import { ResearchKeyService } from "./research-key.service";
 
 @Module({
 	imports: [TrpcModule],
@@ -21,14 +20,12 @@ import { ResearchKeyService } from "./research-key.service";
 		AgentsRouter,
 		AiCapabilityService,
 		DispatchHeartbeatService,
-		ResearchKeyService,
 	],
 	exports: [
 		AgentAccessService,
 		AgentTriggerService,
 		AgentQueueService,
 		AiCapabilityService,
-		ResearchKeyService,
 	],
 })
 export class AgentModule {}

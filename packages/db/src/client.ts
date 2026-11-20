@@ -1,6 +1,7 @@
 import "@crm/env/load";
 
 import { PrismaPg } from "@prisma/adapter-pg";
+import { guardDevelopmentCommand } from "./database-guard";
 import { type Prisma, PrismaClient } from "./generated/prisma/client";
 import { isolateBatchesByScope, scopedAdapterFactory } from "./scoped-adapter";
 import { createTenantPool } from "./tenant-pool";
@@ -45,6 +46,15 @@ function testDatabase(): string {
 	if (!databaseName(url).endsWith("_test")) {
 		throw new Error(
 			`TEST_DATABASE_URL must name a database ending in _test, so it cannot be one somebody is using. It names "${databaseName(url)}".`,
+		);
+	}
+
+	const [decision] = guardDevelopmentCommand([
+		{ from: "test environment", values: { ...process.env, DATABASE_URL: url } },
+	]);
+	if (!decision?.allowed || decision.reason === "override") {
+		throw new Error(
+			"TEST_DATABASE_URL requires a local or allowlisted development database.",
 		);
 	}
 

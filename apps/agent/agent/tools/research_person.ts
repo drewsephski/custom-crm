@@ -1,14 +1,17 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { CONTEXT_DEV_SEARCH, enabled, unavailable } from "../lib/capabilities";
+import {
+	CONTEXT_DEV_SEARCH,
+	enabled,
+	PERPLEXITY,
+	unavailable,
+} from "../lib/capabilities";
 import { CONTEXT } from "../lib/context-config";
 import { search } from "../lib/context-dev";
 import { spend } from "../lib/focus";
 import { ask } from "../lib/perplexity";
 import { inSessionTenant } from "../lib/tenant-scope";
-
-const UNCONFIGURED =
-	"PERPLEXITY_API_KEY or a Context.dev key (Settings → General)";
+import { untrustedOutput } from "../lib/untrusted";
 
 async function perplexityAnswer(question: string, deep: boolean) {
 	const answer = await ask(question, {
@@ -70,9 +73,9 @@ export default defineTool({
 	}),
 	async execute({ question, deep }, ctx) {
 		return inSessionTenant(ctx, async () => {
-			const perplexity = await enabled("PERPLEXITY_API_KEY");
-			if (!perplexity && !(await enabled(CONTEXT_DEV_SEARCH))) {
-				return unavailable(UNCONFIGURED);
+			const perplexity = enabled(PERPLEXITY);
+			if (!perplexity && !enabled(CONTEXT_DEV_SEARCH)) {
+				return unavailable(PERPLEXITY);
 			}
 
 			const charge = spend(deep ? 2 : 1);
@@ -81,6 +84,13 @@ export default defineTool({
 			return perplexity
 				? perplexityAnswer(question, deep)
 				: contextDevSources(question, deep);
+		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, {
+			answer: "a Perplexity answer",
+			citations: "Perplexity citations",
+			sources: "web search results",
 		});
 	},
 });

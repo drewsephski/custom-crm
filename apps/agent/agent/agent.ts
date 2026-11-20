@@ -6,7 +6,7 @@ import { defineAgent } from "eve";
 import { logCapabilities } from "./lib/capabilities";
 import { defaultAgentModel } from "./lib/model";
 
-void logCapabilities();
+logCapabilities();
 
 onTelemetryProblem((message) => console.debug(`[telemetry] ${message}`));
 

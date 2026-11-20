@@ -10,6 +10,7 @@ import { parseSavedViewFilters } from "@crm/validation/saved-view";
 import type { WorkspaceConfig } from "@crm/validation/workspace-config";
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+import { appendStageDeals, lockBoardStages } from "../deals/board-position";
 import type { PipelineApplyResult, PipelinePlan } from "./pipeline.contracts";
 
 type ConfigStage = WorkspaceConfig["pipeline"][number];
@@ -181,6 +182,14 @@ export class PipelineService {
 			pipeline.stages.map((stage) => [stage.key, stage]),
 		);
 
+		await lockBoardStages(
+			tx,
+			moves.flatMap((move) => {
+				const target = existingByKey.get(move.targetKey);
+				return target ? [move.from.stageId, target.id] : [move.from.stageId];
+			}),
+		);
+
 		await tx.pipelineStage.updateMany({
 			where: { pipelineId: pipeline.id, isDefault: true },
 			data: { isDefault: false },
@@ -232,10 +241,7 @@ export class PipelineService {
 				where: { stageId: move.from.stageId },
 				select: { id: true, companyId: true },
 			});
-			await tx.deal.updateMany({
-				where: { stageId: move.from.stageId },
-				data: { stageId: targetId },
-			});
+			await appendStageDeals(tx, move.from.stageId, targetId, now);
 			await tx.activity.createMany({
 				data: deals.map((deal) => ({
 					type: ActivityType.STAGE_CHANGE,

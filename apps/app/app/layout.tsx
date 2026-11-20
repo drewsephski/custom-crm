@@ -1,6 +1,7 @@
 import "@crm/ui/globals.css";
 import { TooltipProvider } from "@crm/ui/components/tooltip";
 import { cn } from "@crm/ui/lib/utils";
+import { PRODUCT } from "@crm/validation/product";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -22,10 +23,22 @@ const fontMono = Geist_Mono({
 
 export const metadata: Metadata = {
 	title: {
-		default: "Comp AI - CRM",
-		template: "Comp AI CRM: %s",
+		default: PRODUCT.name,
+		template: `%s | ${PRODUCT.name}`,
 	},
-	description: "Customer Relationship Management for Comp AI",
+	description: PRODUCT.description,
+	applicationName: PRODUCT.name,
+	openGraph: {
+		type: "website",
+		siteName: PRODUCT.name,
+		title: PRODUCT.name,
+		description: PRODUCT.description,
+	},
+	twitter: {
+		card: "summary",
+		title: PRODUCT.name,
+		description: PRODUCT.description,
+	},
 	icons: {
 		icon: [
 			{ url: "/favicon.svg", type: "image/svg+xml" },

@@ -2,6 +2,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import pg from "pg";
+import { guardDevelopmentCommand } from "../src/database-guard";
+import { directDatabaseUrl } from "../src/database-host";
+import { guardSources } from "./guard-env";
 
 const SCHEMA = join(dirname(import.meta.dirname), "prisma", "schema.prisma");
 const MIGRATIONS = join(dirname(import.meta.dirname), "prisma", "migrations");
@@ -17,7 +20,15 @@ if (!url) {
 
 const name = databaseName(url);
 
-if (!name.endsWith("_test")) {
+const targets = [
+	{ from: "test target", values: { ...process.env, DATABASE_URL: url } },
+	...guardSources(),
+];
+const verdict = guardDevelopmentCommand(targets)[0];
+if (!verdict?.allowed || verdict.reason === "override")
+	fail(["Use a local or explicitly listed development database for tests."]);
+
+if (!/^[a-zA-Z0-9_]+_test$/.test(name)) {
 	fail([
 		`TEST_DATABASE_URL names "${name}", which does not end in _test.`,
 		"The suite refuses anything else, because it deletes rows it expects to",
@@ -34,7 +45,7 @@ if (!process.env.TEST_DATABASE_URL) {
 			"",
 			"  Add this to .env so the suite finds it:",
 			"",
-			`    TEST_DATABASE_URL="${url}"`,
+			"    Set TEST_DATABASE_URL to the dedicated test database URL.",
 			"",
 		].join("\n"),
 	);
@@ -45,9 +56,9 @@ async function create(
 	database: string,
 	forced: boolean,
 ): Promise<void> {
-	const maintenance = new URL(target);
+	const maintenance = new URL(directDatabaseUrl(target));
 	maintenance.pathname = "/postgres";
-	maintenance.search = "";
+	maintenance.searchParams.delete("schema");
 
 	const client = new pg.Client({ connectionString: maintenance.toString() });
 
@@ -56,7 +67,7 @@ async function create(
 	} catch (error) {
 		fail([
 			`Could not reach the server at ${new URL(target).host}.`,
-			"Is Postgres running?  docker compose up -d",
+			"Is the server in TEST_DATABASE_URL running and reachable?",
 			"",
 			error instanceof Error ? error.message : String(error),
 		]);
@@ -121,7 +132,9 @@ async function stale(target: string, database: string): Promise<string | null> {
 }
 
 async function appliedMigrations(target: string): Promise<string[] | null> {
-	const client = new pg.Client({ connectionString: target });
+	const client = new pg.Client({
+		connectionString: directDatabaseUrl(target),
+	});
 
 	try {
 		await client.connect();
@@ -152,7 +165,14 @@ function drifted(target: string): boolean {
 			SCHEMA,
 			"--exit-code",
 		],
-		{ stdio: "ignore", env: { ...process.env, DATABASE_URL: target } },
+		{
+			stdio: "ignore",
+			env: {
+				...process.env,
+				DATABASE_URL: target,
+				DATABASE_URL_UNPOOLED: directDatabaseUrl(target),
+			},
+		},
 	);
 
 	return result.status === 2;
@@ -161,7 +181,11 @@ function drifted(target: string): boolean {
 function migrate(target: string): void {
 	const result = spawnSync("prisma", ["migrate", "deploy"], {
 		stdio: "inherit",
-		env: { ...process.env, DATABASE_URL: target },
+		env: {
+			...process.env,
+			DATABASE_URL: target,
+			DATABASE_URL_UNPOOLED: directDatabaseUrl(target),
+		},
 	});
 
 	if (result.error) {

@@ -2,6 +2,7 @@ import { type MailboxProviderId, mailboxGrantsNeeded } from "@crm/auth/scopes";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
+import { ENTRY_PATH } from "@/lib/auth-redirect";
 import { requireSession, signInAccounts } from "@/lib/session";
 import { GrantAccess } from "./grant-access";
 
@@ -27,7 +28,7 @@ export default async function GrantAccessPage() {
 	const providers = mailboxGrantsNeeded(await signInAccounts(user.id));
 
 	if (providers.length === 0) {
-		redirect("/");
+		redirect(ENTRY_PATH);
 	}
 
 	const only = providers.length === 1 ? providers[0] : undefined;

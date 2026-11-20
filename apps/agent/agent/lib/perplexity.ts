@@ -23,7 +23,12 @@ export async function ask(
 	options: AskOptions = {},
 ): Promise<Outcome<Answer>> {
 	const apiKey = process.env.PERPLEXITY_API_KEY;
-	if (!apiKey) return { ok: false, reason: "No PERPLEXITY_API_KEY." };
+	if (!apiKey) {
+		return {
+			ok: false,
+			reason: "Web research is not configured on this install.",
+		};
+	}
 
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -79,32 +84,4 @@ export async function ask(
 	} finally {
 		clearTimeout(timer);
 	}
-}
-
-export async function findProfileUrls(
-	terms: string[],
-	companyName: string,
-): Promise<string[]> {
-	const slugs: string[] = [];
-
-	for (const term of terms) {
-		const answer = await ask(
-			`Find the LinkedIn profile of the person called "${term}" who works at ${companyName}. Reply with their profile URL only.`,
-			{ domains: ["linkedin.com"] },
-		);
-
-		if (!answer.ok) continue;
-
-		const haystack = [answer.data.text, ...answer.data.citations].join(" ");
-		for (const match of haystack.matchAll(
-			/linkedin\.com\/in\/([A-Za-z0-9\-_%]+)/g,
-		)) {
-			const slug = match[1];
-			if (slug && !slugs.includes(slug)) slugs.push(slug);
-		}
-
-		if (slugs.length > 0) break;
-	}
-
-	return slugs;
 }

@@ -1,4 +1,5 @@
 import { MCP_AUTH } from "@crm/auth/mcp-config";
+import { apiServiceUrl } from "@crm/env/service-urls";
 import { z } from "zod";
 import { MCP } from "./mcp-config";
 
@@ -13,10 +14,8 @@ export async function mcpConnectionToken(
 ) {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
 	if (!secret) throw new Error("MCP token brokering is not configured.");
-	const baseUrl = process.env.API_URL?.trim() || MCP.api.baseUrl;
-	const url = new URL(
+	const url = apiServiceUrl(
 		`/internal/mcp/connections/${encodeURIComponent(connectionId)}/token`,
-		baseUrl,
 	);
 	const response = await fetch(url, {
 		headers: {

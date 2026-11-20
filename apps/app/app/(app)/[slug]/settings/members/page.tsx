@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { InviteMembers } from "./invite-members";
+import { MembersLive } from "./members-live";
 import { membersSearchParams } from "./members-search-params";
 import { MembersTable } from "./members-table";
 
@@ -63,6 +64,7 @@ async function Members({
 	return (
 		<HydrateClient>
 			<div className="flex flex-col gap-6">
+				<MembersLive />
 				<InviteMembers />
 				<MembersTable />
 			</div>

@@ -115,6 +115,18 @@ export const invitationOutput = z.object({
 
 export type InvitationView = z.infer<typeof invitationOutput>;
 
+export const INVITATION_EMAIL_STATUSES = [
+	"sent",
+	"not-sent",
+	"failed",
+] as const;
+
+export const inviteMemberOutput = invitationOutput.extend({
+	emailStatus: z.enum(INVITATION_EMAIL_STATUSES),
+});
+
+export type InviteMemberResult = z.infer<typeof inviteMemberOutput>;
+
 export const invitationListOutput = z.array(invitationOutput);
 
 export const myInvitationOutput = z.object({
@@ -130,3 +142,16 @@ export type MyInvitation = z.infer<typeof myInvitationOutput>;
 export const myInvitationListOutput = z.array(myInvitationOutput);
 
 export const okOutput = z.object({ ok: z.literal(true) });
+
+export const workspaceLiveOutput = z
+	.object({
+		url: z.url(),
+		sealedQuery: z.object({
+			capability: z.string(),
+			queryFingerprint: z.string(),
+			expiresAt: z.number(),
+		}),
+	})
+	.nullable();
+
+export type WorkspaceLive = z.infer<typeof workspaceLiveOutput>;

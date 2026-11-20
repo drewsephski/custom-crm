@@ -4,14 +4,26 @@ import {
 	CONTEXT_DEV,
 	CONTEXT_DEV_PEOPLE,
 	CONTEXT_DEV_SEARCH,
-	CONTEXT_DEV_SOURCE,
-	capabilitiesFrom,
+	capabilities,
+	capabilitiesMarkdown,
 	enabled,
-	markdownFor,
+	PERPLEXITY,
 	unavailable,
 } from "../agent/lib/capabilities";
+import {
+	contextDevClient,
+	contextDevConfigured,
+} from "../agent/lib/context-client";
 
-const KEYS = ["PERPLEXITY_API_KEY", "BLOB_READ_WRITE_TOKEN"] as const;
+const KEYS = [
+	"PERPLEXITY_API_KEY",
+	"CONTEXT_DEV_API_KEY",
+	"BLOB_READ_WRITE_TOKEN",
+	"S3_PUBLIC_BUCKET",
+	"S3_PRIVATE_BUCKET",
+] as const;
+
+const PLATFORM_KEY = "ctx-platform-key-0123456789";
 
 const saved: Record<string, string | undefined> = {};
 
@@ -29,134 +41,145 @@ afterEach(() => {
 	}
 });
 
+const capability = (id: string) =>
+	capabilities().find((entry) => entry.id === id);
+
 describe("capabilities", () => {
-	it("reports everything off on a bare install", async () => {
-		expect(capabilitiesFrom(null).every((c) => !c.enabled)).toBe(true);
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
+	it("reports everything off on a bare install", () => {
+		expect(capabilities().every((entry) => !entry.enabled)).toBe(true);
+		expect(enabled(PERPLEXITY)).toBe(false);
 	});
 
-	it("turns one on without turning on the others", async () => {
+	it("turns one on without turning on the others", () => {
 		process.env.PERPLEXITY_API_KEY = "pplx-test";
 
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
-		expect(await enabled("BLOB_READ_WRITE_TOKEN")).toBe(false);
+		expect(enabled(PERPLEXITY)).toBe(true);
+		expect(enabled("BLOB_READ_WRITE_TOKEN")).toBe(false);
+		expect(enabled(CONTEXT_DEV)).toBe(false);
 	});
 
-	it("treats blank and whitespace as unset", async () => {
+	it("treats blank and whitespace as unset", () => {
 		process.env.PERPLEXITY_API_KEY = "   ";
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
+		process.env.CONTEXT_DEV_API_KEY = "   ";
+
+		expect(enabled(PERPLEXITY)).toBe(false);
+		expect(enabled(CONTEXT_DEV)).toBe(false);
+		expect(contextDevConfigured()).toBe(false);
+		expect(contextDevClient()).toBeNull();
 	});
 
-	it("is read live, so a late-configured process is not stuck off", async () => {
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
-		process.env.PERPLEXITY_API_KEY = "key";
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(true);
+	it("is read live, so a late-configured process is not stuck off", () => {
+		expect(enabled(CONTEXT_DEV)).toBe(false);
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
+		expect(enabled(CONTEXT_DEV)).toBe(true);
+		delete process.env.CONTEXT_DEV_API_KEY;
+		expect(enabled(CONTEXT_DEV)).toBe(false);
 	});
 
-	it("is unknown for a variable that is not a capability", async () => {
+	it("is unknown for a variable that is not a capability", () => {
 		process.env.SOMETHING_ELSE = "x";
-		expect(await enabled("SOMETHING_ELSE")).toBe(false);
+		expect(enabled("SOMETHING_ELSE")).toBe(false);
 		delete process.env.SOMETHING_ELSE;
 	});
 });
 
-describe("the Context key is a setting, never a variable", () => {
-	const contextDev = (stored: string | null) =>
-		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV);
+describe("the Context key is one platform variable", () => {
+	it("turns the three Context sources on together", () => {
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
 
-	it("is on when a key is stored", () => {
-		expect(contextDev("ctx-from-the-settings-page")?.enabled).toBe(true);
+		for (const id of [CONTEXT_DEV, CONTEXT_DEV_PEOPLE, CONTEXT_DEV_SEARCH]) {
+			expect(enabled(id)).toBe(true);
+		}
+		expect(contextDevConfigured()).toBe(true);
+		expect(contextDevClient()).not.toBeNull();
 	});
 
-	it("is off when nothing has been stored", () => {
-		expect(contextDev(null)?.enabled).toBe(false);
-	});
-
-	it("is not turned on by an environment variable", () => {
-		process.env.CONTEXT_DEV_API_KEY = "a-variable-nothing-reads";
-
-		expect(contextDev(null)?.enabled).toBe(false);
-
-		delete process.env.CONTEXT_DEV_API_KEY;
-	});
-
-	it("points at the settings page rather than a variable name", () => {
-		expect(contextDev(null)?.from).toBe("Settings → General");
-	});
-});
-
-describe("reading a person comes from the same Context key", () => {
-	const people = (stored: string | null) =>
-		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV_PEOPLE);
-
-	it("is on when a key is stored and off when it is not", () => {
-		expect(people("ctx")?.enabled).toBe(true);
-		expect(people(null)?.enabled).toBe(false);
-	});
-
-	it("points at the settings page rather than a variable name", () => {
-		expect(people(null)?.from).toBe("Settings → General");
-	});
-
-	it("turns on and off with the brand lookup, because it is one key", () => {
-		for (const stored of ["ctx", null]) {
-			expect(people(stored)?.enabled).toBe(
-				capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV)?.enabled ===
-					true,
-			);
+	it("turns the three Context sources off together", () => {
+		for (const id of [CONTEXT_DEV, CONTEXT_DEV_PEOPLE, CONTEXT_DEV_SEARCH]) {
+			expect(enabled(id)).toBe(false);
 		}
 	});
-});
 
-describe("web search comes from the same Context key", () => {
-	const webSearch = (stored: string | null) =>
-		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV_SEARCH);
-
-	it("is on when a key is stored and off when it is not", () => {
-		expect(webSearch("ctx")?.enabled).toBe(true);
-		expect(webSearch(null)?.enabled).toBe(false);
+	it("names the variable, and nothing reads Settings", () => {
+		for (const id of [CONTEXT_DEV, CONTEXT_DEV_PEOPLE, CONTEXT_DEV_SEARCH]) {
+			expect(capability(id)?.from).toBe("CONTEXT_DEV_API_KEY");
+		}
+		expect(JSON.stringify(capabilities())).not.toContain("Settings");
 	});
 
-	it("does not turn on Perplexity", async () => {
-		expect(webSearch("ctx")?.enabled).toBe(true);
-		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
+	it("keeps the labels the instructions already use", () => {
+		expect(capability(CONTEXT_DEV)?.label).toBe("Company brand data");
+		expect(capability(CONTEXT_DEV_PEOPLE)?.label).toBe("LinkedIn");
+		expect(capability(CONTEXT_DEV_SEARCH)?.label).toBe("Web search");
+	});
+
+	it("does not turn on Perplexity", () => {
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
+
+		expect(enabled(CONTEXT_DEV_SEARCH)).toBe(true);
+		expect(enabled(PERPLEXITY)).toBe(false);
+	});
+
+	it("never puts the key value in a capability, a briefing or a boot line", () => {
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
+
+		const surfaces = [
+			JSON.stringify(capabilities()),
+			capabilitiesMarkdown(),
+			bootLines().join("\n"),
+			JSON.stringify(unavailable(CONTEXT_DEV)),
+		];
+
+		for (const surface of surfaces) {
+			expect(surface).not.toContain(PLATFORM_KEY);
+		}
 	});
 });
 
 describe("the unavailable result", () => {
 	it("says retrying will not help", () => {
-		const result = unavailable(CONTEXT_DEV_SOURCE);
+		const result = unavailable(CONTEXT_DEV_PEOPLE);
 
 		expect(result.ok).toBe(false);
 		expect(result.configured).toBe(false);
 		expect(result.reason).toContain("retrying will not help");
-		expect(result.reason).toContain(CONTEXT_DEV_SOURCE);
+		expect(result.reason).toContain(
+			"LinkedIn is not configured on this install",
+		);
+	});
+
+	it("names no variable and no settings page", () => {
+		for (const id of [
+			PERPLEXITY,
+			CONTEXT_DEV,
+			CONTEXT_DEV_PEOPLE,
+			CONTEXT_DEV_SEARCH,
+		]) {
+			const { reason } = unavailable(id);
+
+			expect(reason).not.toContain("API_KEY");
+			expect(reason).not.toContain("Settings");
+		}
 	});
 });
 
 describe("the capability briefing", () => {
 	it("tells a bare install to work from the CRM alone", () => {
-		const markdown = markdownFor(capabilitiesFrom(null));
+		const markdown = capabilitiesMarkdown();
 
 		expect(markdown).toContain("No outside sources are configured");
 		expect(markdown).toContain("read_crm_history");
 	});
 
 	it("lists what is on and what is off, separately", () => {
-		const markdown = markdownFor(capabilitiesFrom("ctx"));
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
+
+		const markdown = capabilitiesMarkdown();
 
 		expect(markdown).toContain("Available:");
 		expect(markdown).toContain("LinkedIn");
 		expect(markdown).toContain("Not configured here");
 		expect(markdown).toContain("Web research");
-	});
-
-	it("counts a stored Context key as configured", () => {
-		process.env.PERPLEXITY_API_KEY = "key";
-
-		const markdown = markdownFor(capabilitiesFrom("ctx"));
-
-		expect(markdown).toContain("Company brand data");
 		expect(markdown.indexOf("Company brand data")).toBeLessThan(
 			markdown.indexOf("Not configured here"),
 		);
@@ -165,28 +188,26 @@ describe("the capability briefing", () => {
 	it("does not warn about missing sources when everything is on", () => {
 		for (const key of KEYS) process.env[key] = "key";
 
-		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
-			"Not configured here",
-		);
+		expect(capabilitiesMarkdown()).not.toContain("Not configured here");
 	});
 });
 
 describe("the boot log", () => {
-	it("counts the workspaces that saved a Context key", () => {
-		const lines = bootLines(1, 2);
+	it("reports the Context sources on when the platform key is set", () => {
+		process.env.CONTEXT_DEV_API_KEY = PLATFORM_KEY;
+
+		const lines = bootLines();
 
 		expect(lines).toContain(
-			"[agent] on   Company brand data (Settings → General, 1 of 2 workspaces)",
+			"[agent] on   Company brand data (CONTEXT_DEV_API_KEY)",
 		);
-		expect(lines).toContain(
-			"[agent] on   LinkedIn (Settings → General, 1 of 2 workspaces)",
-		);
+		expect(lines).toContain("[agent] on   LinkedIn (CONTEXT_DEV_API_KEY)");
 		expect(lines).toContain("[agent] off  Web research (PERPLEXITY_API_KEY)");
 	});
 
-	it("reports the Context sources off when no workspace saved a key", () => {
-		expect(bootLines(0, 2)).toContain(
-			"[agent] off  Company brand data (Settings → General, 0 of 2 workspaces)",
+	it("reports the Context sources off when the platform key is not set", () => {
+		expect(bootLines()).toContain(
+			"[agent] off  Company brand data (CONTEXT_DEV_API_KEY)",
 		);
 	});
 });

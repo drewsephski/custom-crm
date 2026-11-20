@@ -43,7 +43,7 @@ export async function storePortrait({
 			stored: false,
 			imageUrl: null,
 			reason:
-				"This install has no BLOB_READ_WRITE_TOKEN, so there is nowhere to keep a copy. " +
+				"This install has no picture storage (BLOB_READ_WRITE_TOKEN or S3_PUBLIC_BUCKET), so there is nowhere to keep a copy. " +
 				"The source URL expires within weeks and is never stored. Retrying will not help.",
 		};
 	}
@@ -101,7 +101,7 @@ export async function runPortrait({
 			stored: false,
 			imageUrl: null,
 			reason:
-				"This install has no BLOB_READ_WRITE_TOKEN, so there is nowhere to keep a copy. Retrying will not help.",
+				"This install has no picture storage (BLOB_READ_WRITE_TOKEN or S3_PUBLIC_BUCKET), so there is nowhere to keep a copy. Retrying will not help.",
 		};
 	}
 
@@ -141,7 +141,7 @@ export async function runPortrait({
 			companyDomain: contact.company?.domain ?? null,
 		},
 		spend,
-		await enabled(CONTEXT_DEV_PEOPLE),
+		enabled(CONTEXT_DEV_PEOPLE),
 	);
 
 	if (!found.found) {

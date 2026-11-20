@@ -24,7 +24,7 @@ export default defineTool({
 					stored: false as const,
 					configured: false as const,
 					reason:
-						"This install has no BLOB_READ_WRITE_TOKEN, so there is nowhere to keep a copy, and " +
+						"This install has no picture storage (BLOB_READ_WRITE_TOKEN or S3_PUBLIC_BUCKET), so there is nowhere to keep a copy, and " +
 						"the source URLs expire. Retrying will not help.",
 				};
 			}

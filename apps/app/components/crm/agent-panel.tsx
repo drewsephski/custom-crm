@@ -79,6 +79,8 @@ import { claimCursor, conversationCursor } from "@/lib/conversation-cursor";
 import { useTRPC } from "@/lib/trpc/client";
 import { useRecordSheetView } from "./record-sheet/record-stack";
 
+import { ResearchResults } from "./research-results";
+
 export function AgentPanel({ record }: { record: AgentRecord }) {
 	const conversations = useConversations(recordFilter(record));
 	const { thread, setThread } = useRecordSheetView("overview");
@@ -88,12 +90,21 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 	if (conversations.isPending) return <Loading />;
 
 	return (
-		<LoadedAgentPanel
-			record={record}
-			history={history}
-			thread={thread}
-			setThread={setThread}
-		/>
+		<>
+			{record.kind !== "deal" && (
+				<ResearchResults
+					key={`${record.kind}/${record.id}`}
+					record={recordFilter(record)}
+					refreshMs={WORKING_POLL_MS}
+				/>
+			)}
+			<LoadedAgentPanel
+				record={record}
+				history={history}
+				thread={thread}
+				setThread={setThread}
+			/>
+		</>
 	);
 }
 

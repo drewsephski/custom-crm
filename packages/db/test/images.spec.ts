@@ -1,11 +1,41 @@
 import { describe, expect, it } from "bun:test";
-import { COMPANY_IMAGE_FIELDS, isMirrored, isOptimizable } from "../src/images";
+import {
+	COMPANY_IMAGE_FIELDS,
+	isMirrored,
+	isOptimizable,
+	privateImagePrefix,
+} from "../src/images";
 
 const OURS = "https://abc123.public.blob.vercel-storage.com";
 
 describe("isMirrored", () => {
 	it("recognises our own store, so a re-run does not re-upload", () => {
 		expect(isMirrored(`${OURS}/contacts/c1-9f8e.jpg`)).toBe(true);
+	});
+
+	it("keeps private images behind the authenticated route during backfills", () => {
+		const image = privateImagePrefix() + "workspace/contacts/avatar.png";
+		expect(isMirrored(image)).toBe(true);
+		expect(isOptimizable(image)).toBe(false);
+		expect(
+			isMirrored("https://example.org/api/images/workspaces/org/file.png"),
+		).toBe(false);
+	});
+
+	it("recognises a Neon storage endpoint, and only that kind of Neon host", () => {
+		expect(
+			isMirrored(
+				"https://br-cool-lab-123.storage.c-8.us-east-2.aws.neon.tech/assets/contacts/c1-9f8e.jpg",
+			),
+		).toBe(true);
+		expect(
+			isMirrored(
+				"https://br-cool-lab-123-cron.compute.c-8.us-east-2.aws.neon.tech/x.jpg",
+			),
+		).toBe(false);
+		expect(
+			isMirrored("https://evil.com/storage.c-8.us-east-2.aws.neon.tech/x.jpg"),
+		).toBe(false);
 	});
 
 	it("does not recognise somebody else's CDN", () => {

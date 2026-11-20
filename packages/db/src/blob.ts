@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { isMirrored } from "./images";
+import {
+	objectStorageConfig,
+	privateStorageConfig,
+	putImageObject,
+} from "./object-storage";
 import { safeFetch } from "./safe-fetch";
+import { currentOrganizationId } from "./tenancy";
 
 export { isMirrored, isOptimizable } from "./images";
 
@@ -20,8 +26,26 @@ const ALLOWED: ExtensionByMediaType = {
 	"image/vnd.microsoft.icon": "ico",
 };
 
+export const WORKSPACE_KEY_PREFIX = "workspaces";
+
+export function objectKey(
+	prefix: string,
+	digest: string,
+	extension: string,
+	organizationId: string | undefined = currentOrganizationId(),
+): string {
+	const name = `${prefix}-${digest}.${extension}`;
+	return organizationId
+		? `${WORKSPACE_KEY_PREFIX}/${organizationId}/${name}`
+		: name;
+}
+
 export function blobEnabled(): boolean {
-	return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+	return (
+		privateStorageConfig() !== null ||
+		objectStorageConfig() !== null ||
+		Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim())
+	);
 }
 
 export async function mirror(
@@ -48,9 +72,20 @@ export async function mirror(
 			.digest("hex")
 			.slice(0, 12);
 
+		const key = objectKey(prefix, digest, extension);
+		if (currentOrganizationId() && process.env.S3_PRIVATE_BUCKET?.trim()) {
+			const storage = privateStorageConfig();
+			if (!storage) return null;
+			const origin =
+				process.env.APP_URL?.split(",")[0]?.trim() || "http://localhost:3000";
+			return await putImageObject(storage, key, bytes, type, origin);
+		}
+		const storage = objectStorageConfig();
+		if (storage) return await putImageObject(storage, key, bytes, type);
+
 		const { put } = await import("@vercel/blob");
 
-		const blob = await put(`${prefix}-${digest}.${extension}`, bytes, {
+		const blob = await put(key, bytes, {
 			access: "public",
 			contentType: type,
 			addRandomSuffix: false,

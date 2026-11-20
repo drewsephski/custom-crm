@@ -12,7 +12,7 @@ const storedText = z.string().nullable().catch(null);
 
 if (!blobEnabled()) {
 	console.warn(
-		"No BLOB_READ_WRITE_TOKEN — icon tone and dark artwork will still be " +
+		"No BLOB_READ_WRITE_TOKEN or S3_PUBLIC_BUCKET — icon tone and dark artwork will still be " +
 			"filled in, but nothing will be copied into Blob.",
 	);
 }

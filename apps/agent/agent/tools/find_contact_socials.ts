@@ -4,6 +4,7 @@ import { personForVerification, stampSocialsChecked } from "../lib/crm";
 import { focusOn, spend } from "../lib/focus";
 import { findSocialCandidates } from "../lib/socials";
 import { inSessionTenant } from "../lib/tenant-scope";
+import { untrustedOutput } from "../lib/untrusted";
 
 export default defineTool({
 	description:
@@ -42,5 +43,8 @@ export default defineTool({
 				note: "Unverified. set_contact_socials will reject any of these it cannot corroborate, and that is a normal outcome.",
 			};
 		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, { citations: "Perplexity citations" });
 	},
 });

@@ -12,6 +12,7 @@ import {
 	parseWorkspaceConfig,
 	templateConfig,
 	type WorkspaceConfig,
+	workspaceConfig,
 } from "@crm/validation/workspace-config";
 import {
 	BadRequestException,
@@ -96,6 +97,13 @@ function isUnfiltered(view: SavedViewFilters): boolean {
 	);
 }
 
+function sameConfig(stored: VersionRow["config"], config: WorkspaceConfig) {
+	const parsed = workspaceConfig.safeParse(stored);
+	return (
+		parsed.success && JSON.stringify(parsed.data) === JSON.stringify(config)
+	);
+}
+
 function toView(row: VersionRow): ConfigVersionView {
 	return {
 		id: row.id,
@@ -163,12 +171,7 @@ export class WorkspaceConfigService {
 		const aiAvailable = this.ai.canGenerate();
 
 		const created = await this.db.$transaction(async (tx) => {
-			await lockIdempotencyKey(tx, "workspace-config");
-			const last = await tx.workspaceConfigVersion.findFirst({
-				orderBy: { version: "desc" },
-				select: { version: true },
-			});
-			const next = (last?.version ?? 0) + 1;
+			const next = await this.lockNextVersion(tx);
 
 			const template = await tx.workspaceConfigVersion.create({
 				data: {
@@ -209,6 +212,50 @@ export class WorkspaceConfigService {
 		});
 
 		return [created.template, ...(created.ai ? [created.ai] : [])].map(toView);
+	}
+
+	async createReviewed(
+		userId: string,
+		profile: BusinessProfile,
+		config: WorkspaceConfig,
+	): Promise<ConfigVersionView> {
+		await this.assertConfigurer(userId);
+		const reviewed = parseWorkspaceConfig(config);
+
+		const version = await this.db.$transaction(async (tx) => {
+			const next = await this.lockNextVersion(tx);
+
+			const existing = await tx.workspaceConfigVersion.findFirst({
+				where: {
+					createdById: userId,
+					source: "TEMPLATE",
+					status: { in: ["PROPOSED", "APPLIED"] },
+				},
+				orderBy: { version: "desc" },
+				select: VERSION_SELECT,
+			});
+			if (existing && sameConfig(existing.config, reviewed)) return existing;
+
+			return tx.workspaceConfigVersion.create({
+				data: {
+					version: next,
+					status: "PROPOSED",
+					source: "TEMPLATE",
+					profile,
+					config: reviewed,
+					createdById: userId,
+				},
+				select: VERSION_SELECT,
+			});
+		});
+
+		this.logger.log({
+			message: "Reviewed workspace configuration stored",
+			userId,
+			versionId: version.id,
+		});
+
+		return toView(version);
 	}
 
 	async edit(
@@ -436,6 +483,15 @@ export class WorkspaceConfigService {
 		}
 
 		return { created, updated, kept };
+	}
+
+	private async lockNextVersion(tx: Prisma.TransactionClient): Promise<number> {
+		await lockIdempotencyKey(tx, "workspace-config");
+		const last = await tx.workspaceConfigVersion.findFirst({
+			orderBy: { version: "desc" },
+			select: { version: true },
+		});
+		return (last?.version ?? 0) + 1;
 	}
 
 	private async read(versionId: string): Promise<VersionRow> {

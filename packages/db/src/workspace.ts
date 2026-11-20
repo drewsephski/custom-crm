@@ -27,6 +27,57 @@ export function markOnboarded(metadata: string | null, at: Date): string {
 	);
 }
 
+export type WorkspaceSetup = {
+	businessType: string | null;
+	goals: string[];
+	gettingStartedDismissedBy: string[];
+};
+
+export function readWorkspaceSetup(metadata: string | null): WorkspaceSetup {
+	const current = readMetadata(metadata);
+
+	return {
+		businessType: jsonText(current.businessType) ?? null,
+		goals: jsonTexts(current.goals),
+		gettingStartedDismissedBy: jsonTexts(current.gettingStartedDismissedBy),
+	};
+}
+
+export function completeOnboarding(
+	metadata: string | null,
+	answers: { at: Date; businessType: string; goals: readonly string[] },
+): string {
+	return JSON.stringify({
+		...readMetadata(markOnboarded(metadata, answers.at)),
+		businessType: answers.businessType,
+		goals: [...answers.goals],
+	});
+}
+
+export function dismissGettingStarted(
+	metadata: string | null,
+	userId: string,
+): string {
+	const current = readMetadata(metadata);
+	const dismissed = jsonTexts(current.gettingStartedDismissedBy);
+
+	return JSON.stringify({
+		...current,
+		gettingStartedDismissedBy: dismissed.includes(userId)
+			? dismissed
+			: [...dismissed, userId],
+	});
+}
+
+function jsonTexts(value: JsonValue | undefined): string[] {
+	if (!Array.isArray(value)) return [];
+
+	return value.flatMap((entry) => {
+		const text = jsonText(entry);
+		return text === undefined ? [] : [text];
+	});
+}
+
 function readMetadata(metadata: string | null): JsonObject {
 	if (!metadata) return {};
 

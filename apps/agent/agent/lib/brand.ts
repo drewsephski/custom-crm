@@ -58,7 +58,7 @@ export async function runBrand({
 
 	if (!company) return { enriched: false, reason: "No such company." };
 
-	if (!(await contextDevEnabled())) {
+	if (!contextDevEnabled()) {
 		const reason =
 			"Context.dev is not configured, so there is nowhere to look.";
 		await settle(companyId, EnrichmentStatus.SKIPPED, reason);
@@ -86,7 +86,9 @@ export async function runBrand({
 		},
 	});
 
-	const result = await brandByDomain(company.domain, fresh ? 0 : undefined);
+	const result = await brandByDomain(company.domain, fresh ? 0 : undefined, {
+		companyId,
+	});
 
 	if (result.outcome === "skipped") {
 		await settle(companyId, EnrichmentStatus.SKIPPED, result.reason);

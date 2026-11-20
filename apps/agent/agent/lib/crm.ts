@@ -1,5 +1,6 @@
 import { workspaceAuthor } from "@crm/auth/organization";
 import { db, EnrichmentStatus, type Prisma } from "@crm/db";
+import { linkedinProfileUrl, linkedinSlug } from "./linkedin";
 import { domainOf, isDerivedName } from "./names";
 import type { Person } from "./socials";
 
@@ -95,16 +96,8 @@ export async function contactProfileSlug(
 		select: { linkedinUrl: true },
 	});
 
-	const slug = linkedinSlug(contact?.linkedinUrl ?? null);
-	return slug
-		? { slug, profileUrl: `https://www.linkedin.com/in/${slug}` }
-		: null;
-}
-
-export function linkedinSlug(url: string | null): string | null {
-	if (!url) return null;
-	const match = /linkedin\.com\/in\/([A-Za-z0-9\-_%]+)/.exec(url);
-	return match?.[1] ?? null;
+	const slug = linkedinSlug(contact?.linkedinUrl);
+	return slug ? { slug, profileUrl: linkedinProfileUrl(slug) } : null;
 }
 
 export type CrmHistory = {

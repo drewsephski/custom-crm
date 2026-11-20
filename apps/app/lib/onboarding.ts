@@ -2,13 +2,10 @@ import {
 	NO_WORKSPACE_MESSAGE,
 	WORKSPACE_HEADER,
 } from "@crm/auth/workspace-header";
-import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { API_URL } from "@/lib/env";
+import { API_URL } from "./env";
 
 export const ONBOARDING_PATH = "/onboarding";
-
-export const RESEARCH_PATH = "/onboarding/research";
 
 const GATE_TIMEOUT_MS = 2_000;
 
@@ -40,7 +37,7 @@ export type WorkspaceGate =
 	| { kind: "unknown" };
 
 export async function readWorkspaceGate(
-	request: NextRequest,
+	request: Request,
 	slug: string | null,
 ): Promise<WorkspaceGate> {
 	const cookie = request.headers.get("cookie");

@@ -1,19 +1,14 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { parseEnv } from "@crm/env";
-
-const LOCAL_HOSTS = new Set([
-	"localhost",
-	"127.0.0.1",
-	"::1",
-	"[::1]",
-	"0.0.0.0",
-]);
+import {
+	DATABASE_GUARD,
+	type GuardDecision,
+	guardDevelopmentCommand,
+} from "../src/database-guard";
+import { guardSources } from "./guard-env";
 
 const command = process.argv[2] ?? "this command";
-const resolved = resolveDatabaseUrl();
+const decisions = guardDevelopmentCommand(guardSources());
 
-if (!resolved) {
+if (decisions.length === 0) {
 	console.error(
 		`\n  ${command} needs DATABASE_URL, and nothing set it.` +
 			"\n  Copy .env.example to .env at the repo root.\n",
@@ -21,24 +16,63 @@ if (!resolved) {
 	process.exit(1);
 }
 
-const host = hostOf(resolved.url);
+const refused = decisions.find((decision) => !decision.allowed);
 
-if (LOCAL_HOSTS.has(host)) process.exit(0);
-
-if (process.env.ALLOW_REMOTE_DB === "1") {
-	console.warn(`\n  ⚠ ${command} is running against ${host} — not local.\n`);
-	process.exit(0);
+if (refused) {
+	console.error(refusal(refused));
+	process.exit(1);
 }
 
-console.error(
-	[
+for (const decision of decisions) {
+	if (decision.reason === "development") {
+		console.warn(
+			`\n  ${command} is running against ${decision.target.host}, a development database named in ${DATABASE_GUARD.devHostsVariable}.\n`,
+		);
+	}
+	if (decision.reason === "override") {
+		console.warn(
+			`\n  ⚠ ${command} is running against ${decision.target.host} — not local.\n`,
+		);
+	}
+}
+
+function refusal({ reason, target }: GuardDecision): string {
+	const head = [
 		"",
-		`  Refusing to run ${command} against ${host}.`,
+		`  Refusing to run ${command} against ${target.host}.`,
+		`  The value came from ${target.from}.`,
 		"",
-		`  That is not a local database, and ${command} can rewrite or drop`,
-		`  schemas. The value came from ${resolved.from}.`,
+	];
+
+	if (reason === "protected-branch") {
+		return [
+			...head,
+			`  ${DATABASE_GUARD.branchVariable} is "${target.branch}", a protected Neon branch.`,
+			`  ${command} can rewrite or drop schemas. No override exists for it.`,
+			"",
+			"  Work on a development branch instead:",
+			"",
+			"    neon checkout development",
+			"",
+			"  Migrations reach production through `bun run db:deploy` on a release.",
+			"",
+		].join("\n");
+	}
+
+	if (reason === "protected-host") {
+		return [
+			...head,
+			`  That host is listed in ${DATABASE_GUARD.protectedHostsVariable}.`,
+			`  ${command} can rewrite or drop schemas. No override exists for it.`,
+			"",
+		].join("\n");
+	}
+
+	return [
+		...head,
+		`  That is not a local database, and ${command} can rewrite or drop schemas.`,
 		"",
-		resolved.from.endsWith(".env.local")
+		target.from.endsWith(".env.local")
 			? [
 					"  `.env.local` overrides `.env`, and `vercel env pull` writes",
 					"  production credentials into it. Either remove DATABASE_URL from",
@@ -48,55 +82,13 @@ console.error(
 				].join("\n")
 			: "  Check which file is winning:  grep -m1 DATABASE_URL .env .env.local",
 		"",
+		"  If this host is a development database, name it in .env:",
+		"",
+		`    ${DATABASE_GUARD.devHostsVariable}="${target.host}"`,
+		"",
 		"  To do this deliberately anyway:",
 		"",
-		`    ALLOW_REMOTE_DB=1 bun run ${command}`,
+		`    ${DATABASE_GUARD.allowRemoteVariable}=1 bun run ${command}`,
 		"",
-	].join("\n"),
-);
-
-process.exit(1);
-
-function resolveDatabaseUrl(): { url: string; from: string } | null {
-	const root = workspaceRoot();
-
-	if (root) {
-		for (const file of [".env.local", ".env"]) {
-			const path = join(root, file);
-			try {
-				const url = parseEnv(readFileSync(path, "utf8")).DATABASE_URL;
-				if (url) return { url, from: file };
-			} catch {}
-		}
-	}
-
-	const fromEnvironment = process.env.DATABASE_URL;
-	return fromEnvironment
-		? { url: fromEnvironment, from: "the environment" }
-		: null;
-}
-
-function workspaceRoot(): string | null {
-	let directory = process.cwd();
-
-	while (true) {
-		try {
-			const manifest = JSON.parse(
-				readFileSync(join(directory, "package.json"), "utf8"),
-			) as { workspaces?: unknown };
-			if (manifest.workspaces) return directory;
-		} catch {}
-
-		const parent = dirname(directory);
-		if (parent === directory) return null;
-		directory = parent;
-	}
-}
-
-function hostOf(value: string): string {
-	try {
-		return new URL(value).hostname;
-	} catch {
-		return value;
-	}
+	].join("\n");
 }

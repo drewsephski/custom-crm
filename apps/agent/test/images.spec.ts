@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { photoUrl, slugFromProfileUrl } from "../agent/lib/people";
+import { linkedinSlug } from "../agent/lib/linkedin";
+import { photoUrl } from "../agent/lib/people";
 import { findPortrait } from "../agent/lib/portrait-sources";
 
 const AVATAR =
@@ -27,35 +28,33 @@ describe("photoUrl", () => {
 	});
 });
 
-describe("slugFromProfileUrl", () => {
+describe("linkedinSlug", () => {
 	it("reads the handle out of a profile URL", () => {
-		expect(slugFromProfileUrl("https://www.linkedin.com/in/pmarchetti")).toBe(
+		expect(linkedinSlug("https://www.linkedin.com/in/pmarchetti")).toBe(
 			"pmarchetti",
 		);
-		expect(slugFromProfileUrl("https://linkedin.com/in/pmarchetti/")).toBe(
+		expect(linkedinSlug("https://linkedin.com/in/pmarchetti/")).toBe(
 			"pmarchetti",
 		);
 		expect(
-			slugFromProfileUrl("https://uk.linkedin.com/in/paula-marchetti-1a2b3c"),
+			linkedinSlug("https://uk.linkedin.com/in/paula-marchetti-1a2b3c"),
 		).toBe("paula-marchetti-1a2b3c");
 	});
 
 	it("decodes an escaped handle", () => {
-		expect(slugFromProfileUrl("https://www.linkedin.com/in/j%C3%B8rn-a")).toBe(
+		expect(linkedinSlug("https://www.linkedin.com/in/j%C3%B8rn-a")).toBe(
 			"jørn-a",
 		);
 	});
 
 	it("refuses anything that is not a personal profile", () => {
-		expect(
-			slugFromProfileUrl("https://www.linkedin.com/company/fernhill"),
-		).toBe(null);
-		expect(slugFromProfileUrl("https://www.linkedin.com/in/")).toBe(null);
-		expect(slugFromProfileUrl("https://notlinkedin.com/in/pmarchetti")).toBe(
+		expect(linkedinSlug("https://www.linkedin.com/company/fernhill")).toBe(
 			null,
 		);
-		expect(slugFromProfileUrl("pmarchetti")).toBe(null);
-		expect(slugFromProfileUrl(null)).toBe(null);
+		expect(linkedinSlug("https://www.linkedin.com/in/")).toBe(null);
+		expect(linkedinSlug("https://notlinkedin.com/in/pmarchetti")).toBe(null);
+		expect(linkedinSlug("pmarchetti")).toBe(null);
+		expect(linkedinSlug(null)).toBe(null);
 	});
 });
 

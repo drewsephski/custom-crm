@@ -72,6 +72,8 @@ rate. It exists for one legacy stage (below) and defaults to `true`.
   close it without anybody deciding to.
 - **A stage that holds deals cannot change outcome.** The plan reports it in
   `blocked` and apply refuses.
+- **Moved deals go after the deals of the target stage** and keep their board
+  order. Positions stay unique when two removed stages map to one target.
 - **Moved deals keep `stageChangedAt`, `closedAt` and `closedReason`.** Each one
   gets a `STAGE_CHANGE` activity with `reason: "reconfigured"`. No CRM event is
   emitted: a reconfiguration is not a rep moving a deal, and it must not fire
@@ -116,9 +118,19 @@ a filtered or truncated column on the client cannot produce a wrong order. When
 the gap is exhausted it renumbers that one stage. A move inside a stage changes
 only `boardPosition`: no activity, no event.
 
+`deals.setStage`, `deals.create` and the stage merge take a per-stage advisory
+lock (`lockBoardStages`, `deals/board-position.ts`) before they assign a
+position, so two concurrent moves never compute the same one. The stage locks
+come before the deal row lock.
+
 The client moves the card in the query cache before the request
 (`deals-board-state.ts`) and puts it back on an error. A move into a lost stage
-is not optimistic: it opens the reason dialog first.
+is not optimistic: it opens the reason dialog first. The dialog carries the drop
+placement in `closeAfter` / `closeBefore` and sends it with the reason, so the
+deal lands where it was dropped.
+
+The Board and Table toggle is a URL parameter with `shallow: false`: the server
+page chooses the layout, so the switch must reach the server.
 
 `Kanban` (`@crm/ui/components/kanban`) owns the drag: mouse after 6px, touch after
 a long press, keyboard from each card's move button (Space, arrows, Space;

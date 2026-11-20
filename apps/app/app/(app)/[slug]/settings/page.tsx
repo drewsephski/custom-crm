@@ -15,7 +15,6 @@ import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
 import { AgentModel } from "./agent-model";
 import { ArchiveRetention } from "./archive-retention";
-import { ResearchKey } from "./research-key";
 import { WorkspaceForm } from "./workspace-form";
 
 export const metadata: Metadata = {
@@ -53,7 +52,6 @@ async function Settings() {
 		queryClient.prefetchQuery(trpc.workspace.get.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.agentModel.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.modelCatalog.queryOptions()),
-		queryClient.prefetchQuery(trpc.settings.researchKey.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.archiveRetention.queryOptions()),
 	]);
 
@@ -61,7 +59,6 @@ async function Settings() {
 		<HydrateClient>
 			<SettingsColumn>
 				<WorkspaceForm />
-				<ResearchKey />
 				<ArchiveRetention />
 				<AgentModel />
 			</SettingsColumn>

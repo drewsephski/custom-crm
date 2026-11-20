@@ -1,4 +1,4 @@
-const DEFAULT_AGENT_URL = "http://127.0.0.1:2000";
+import { agentServiceUrl } from "@crm/env/service-urls";
 
 export interface Bridge {
 	url(path: string): URL;
@@ -14,7 +14,5 @@ export function bridge(): Bridge | null {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
 	if (!secret) return null;
 
-	const base = process.env.AGENT_URL?.trim() || DEFAULT_AGENT_URL;
-
-	return { url: (path) => new URL(path, base), secret };
+	return { url: agentServiceUrl, secret };
 }

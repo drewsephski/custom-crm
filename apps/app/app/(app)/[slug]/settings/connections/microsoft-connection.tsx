@@ -172,7 +172,7 @@ export function MicrosoftConnection({
 		trpc.microsoft.revokeAccess.mutationOptions({
 			onSuccess: () =>
 				window.location.assign(
-					status.data?.required ? "/" : `/${slug}/settings/connections`,
+					status.data?.required ? `/${slug}` : `/${slug}/settings/connections`,
 				),
 			onError: (error) => toast.error(error.message),
 		}),

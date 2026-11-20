@@ -49,6 +49,8 @@ model User {
   members     Member[]
   invitations Invitation[]
 
+  onboardingSessions OnboardingSession[]
+
   ssoproviders SsoProvider[]
 
   apiKeys Apikey[]
@@ -524,6 +526,7 @@ model Company {
   enrichedAt       DateTime?
   enrichmentError  String?
   enrichment       CompanyEnrichment?
+  researchResults  ResearchResult[]
 
   source RecordSource @default(MANUAL)
 
@@ -586,9 +589,10 @@ model Contact {
   enrichedAt       DateTime?
   enrichmentError  String?
 
-  brief         ContactBrief?
-  facts         ContactFact[]
-  conversations AgentConversation[]
+  brief           ContactBrief?
+  facts           ContactFact[]
+  researchResults ResearchResult[]
+  conversations   AgentConversation[]
 
   companyId String?
   company   Company? @relation("CompanyContacts", fields: [companyId], references: [id], onDelete: SetNull)
@@ -1661,6 +1665,8 @@ model AppSetting {
 
   contextDevApiKey String?
 
+  researchCreditLimit Int?
+
   reportingCurrency String?
 
   ratesRefreshedAt DateTime?
@@ -1913,9 +1919,154 @@ model Organization {
   workspaceConfigVersions      WorkspaceConfigVersion[]
   pipelines                    Pipeline[]
   pipelineStages               PipelineStage[]
+  researchResults              ResearchResult[]
+  onboardingSessions           OnboardingSession[]
 
   @@unique([slug])
   @@map("organization")
+}
+
+enum OnboardingBrandStatus {
+  IDLE
+  READY
+  NOT_FOUND
+  UNAVAILABLE
+  FAILED
+}
+
+model OnboardingSession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  step         String   @default("business-type")
+  businessType String?
+  goals        String[] @default([])
+  businessName String?
+  website      String?
+  details      Json?
+
+  brand         Json?
+  brandStatus   OnboardingBrandStatus @default(IDLE)
+  brandDomain   String?
+  brandLookups  Int                   @default(0)
+  brandLookupAt DateTime?
+
+  presetKey       String?
+  config          Json?
+  configVersionId String?
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId], map: "onboardingSession_one_open_per_user", where: { completedAt: null })
+  @@index([userId])
+  @@index([organizationId])
+  @@map("onboardingSession")
+}
+
+enum ResearchStatus {
+  RESERVED
+  COMPLETE
+  PARTIAL
+  EMPTY
+  FAILED
+  REFUSED
+}
+
+enum ResearchReview {
+  NONE
+  SUGGESTED
+  ACCEPTED
+  DISMISSED
+  VERIFIED
+}
+
+model ResearchResult {
+  organizationId String       @default(dbgenerated("crm_current_org()"))
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String   @id @default(cuid())
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  task       String
+  provider   String
+  operation  String
+  requestKey String
+
+  status   ResearchStatus @default(RESERVED)
+  partial  Boolean        @default(false)
+  cacheHit Boolean        @default(false)
+
+  findings   Json?
+  sources    Json   @default("[]")
+  confidence Float?
+  match      Json?
+
+  review       ResearchReview @default(NONE)
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  creditsReserved Int     @default(0)
+  creditsUsed     Int     @default(0)
+  attempts        Int     @default(0)
+  error           String?
+
+  userId    String?
+  sessionId String?
+  taskId    String?
+
+  retrievedAt DateTime?
+  expiresAt   DateTime?
+  settledAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([organizationId, provider, operation, requestKey], map: "researchResult_one_in_flight", where: { settledAt: null })
+  @@index([organizationId, createdAt])
+  @@index([organizationId, provider, operation, requestKey, createdAt])
+  @@index([organizationId, userId, createdAt])
+  @@index([companyId])
+  @@index([contactId])
+  @@map("researchResult")
+}
+
+model PlatformResearchUsage {
+  period   String
+  provider String
+
+  creditsReserved Int @default(0)
+  creditsUsed     Int @default(0)
+  requests        Int @default(0)
+  cacheHits       Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@id([period, provider])
+  @@map("platformResearchUsage")
+}
+
+model ProviderCache {
+  provider  String
+  operation String
+  key       String
+
+  response Json
+  credits  Int  @default(0)
+
+  fetchedAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@id([provider, operation, key])
+  @@index([expiresAt])
+  @@map("providerCache")
 }
 
 model WorkspaceProfile {

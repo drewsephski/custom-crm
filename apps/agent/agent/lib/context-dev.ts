@@ -1,8 +1,16 @@
-import ContextDev from "context.dev";
+import type ContextDev from "context.dev";
 import { APIError } from "context.dev/core/error";
+import type { BrandRetrieveResponse } from "context.dev/resources/brand";
 import { z } from "zod";
-import { contextDevKey } from "./capabilities";
+import {
+	contextDevApiKey,
+	contextDevClient,
+	contextDevConfigured,
+} from "./context-client";
 import { CONTEXT } from "./context-config";
+import { cachedLookup, metered } from "./research/meter";
+import { RESEARCH } from "./research/research-config";
+import { publicDomain } from "./research/urls";
 
 export type JsonSchema = {
 	type?:
@@ -65,98 +73,34 @@ export type SearchResult = {
 	markdown: string | null;
 };
 
-let client: { key: string; api: ContextDev } | null = null;
-
-export async function contextDev(): Promise<ContextDev | null> {
-	const key = await contextDevKey();
-
-	if (!key) {
-		client = null;
-		return null;
-	}
-
-	if (client?.key !== key) {
-		client = { key, api: new ContextDev({ apiKey: key }) };
-	}
-
-	return client.api;
+export function contextDev(): ContextDev | null {
+	return contextDevClient();
 }
 
-export async function contextDevEnabled(): Promise<boolean> {
-	return (await contextDevKey()) !== null;
-}
-
-export type KeyCheck =
-	| { outcome: "valid" }
-	| { outcome: "invalid"; reason: string }
-	| { outcome: "unknown"; reason: string };
-
-/**
- * A free-provider address is refused with a documented 422 before any brand is
- * resolved, and a lookup that resolves nothing is not billed — so this proves
- * the key authenticates without spending a credit.
- */
-const PROBE_EMAIL = "key-check@gmail.com";
-
-export async function verifyKey(key: string): Promise<KeyCheck> {
-	const api = new ContextDev({ apiKey: key });
-
-	try {
-		await api.brand.retrieve({
-			type: "by_email",
-			email: PROBE_EMAIL,
-			timeoutMS: CONTEXT.verifyTimeoutMs,
-		});
-
-		return { outcome: "valid" };
-	} catch (error) {
-		return classifyKey(error);
-	}
-}
-
-export function classifyKey(cause: unknown): KeyCheck {
-	if (!(cause instanceof APIError)) {
-		return { outcome: "unknown", reason: describe(cause) };
-	}
-
-	if (cause.status === undefined) {
-		return { outcome: "unknown", reason: describe(cause) };
-	}
-
-	if (cause.status === 401 && !recognisedKeyFailure(cause)) {
-		return {
-			outcome: "invalid",
-			reason: "Context did not recognise that API key.",
-		};
-	}
-
-	return { outcome: "valid" };
+export function contextDevEnabled(): boolean {
+	return contextDevConfigured();
 }
 
 export async function brandByDomain(
 	domain: string,
 	maxAgeMs?: number,
+	target?: { companyId?: string; previewUser?: string },
 ): Promise<LookupResult> {
+	if (!publicDomain(domain))
+		return {
+			outcome: "skipped",
+			reason: "The business needs a public domain.",
+		};
 	const params = {
 		type: "by_domain",
 		domain,
 		timeoutMS: CONTEXT.timeoutMs,
 	} as const;
 
-	return lookup(maxAgeMs === undefined ? params : { ...params, maxAgeMs });
-}
-
-export async function brandByEmail(email: string): Promise<LookupResult> {
-	return lookup({ type: "by_email", email, timeoutMS: CONTEXT.timeoutMs });
-}
-
-export async function prefetch(domain: string): Promise<void> {
-	const api = await contextDev();
-	if (!api) return;
-
-	try {
-		await api.utility.prefetch({ type: "brand", identifier: { domain } });
-	} catch {}
+	return lookup(
+		maxAgeMs === undefined ? params : { ...params, maxAgeMs },
+		target,
+	);
 }
 
 export async function extract(
@@ -166,19 +110,31 @@ export async function extract(
 ): Promise<
 	{ outcome: "found"; data: unknown } | { outcome: "failed"; reason: string }
 > {
-	const api = await contextDev();
+	if (!publicDomain(url))
+		return { outcome: "failed", reason: "Enter a public website URL." };
+	const api = contextDev();
 	if (!api) {
 		return { outcome: "failed", reason: "Context.dev is not configured." };
 	}
 
 	try {
-		const response = await api.web.extract({
-			url,
-			schema,
-			instructions,
-			maxPages: 8,
-			timeoutMS: CONTEXT.timeoutMs,
-		});
+		const response = await metered(
+			{
+				operation: "web.extract",
+				key: JSON.stringify([url, schema, instructions]),
+				estimate:
+					RESEARCH.extract.maxPages *
+					RESEARCH.operations["web.extract"].estimateCredits,
+			},
+			() =>
+				api.web.extract({
+					url,
+					schema,
+					instructions,
+					maxPages: RESEARCH.extract.maxPages,
+					timeoutMS: CONTEXT.timeoutMs,
+				}),
+		);
 		return { outcome: "found", data: response.data };
 	} catch (error) {
 		return { outcome: "failed", reason: describe(error) };
@@ -192,7 +148,7 @@ export async function search(
 	| { outcome: "found"; results: SearchResult[] }
 	| { outcome: "failed"; reason: string }
 > {
-	const api = await contextDev();
+	const api = contextDev();
 	if (!api) {
 		return { outcome: "failed", reason: "Context.dev is not configured." };
 	}
@@ -204,10 +160,18 @@ export async function search(
 	};
 
 	try {
-		const response = await api.web.search(
-			options.excludeDomains
-				? { ...params, excludeDomains: options.excludeDomains }
-				: params,
+		const response = await metered(
+			{
+				operation: "web.search",
+				key: JSON.stringify(params),
+				estimate: params.numResults + Math.ceil(params.numResults / 10),
+			},
+			() =>
+				api.web.search(
+					options.excludeDomains
+						? { ...params, excludeDomains: options.excludeDomains }
+						: params,
+				),
 		);
 
 		const results = (response.results ?? []).map((result) => ({
@@ -226,16 +190,28 @@ export async function search(
 	}
 }
 
+const cachedBrand = cachedLookup<BrandRetrieveResponse>();
 async function lookup(
 	params: Parameters<ContextDev["brand"]["retrieve"]>[0],
+	target?: { companyId?: string; previewUser?: string },
 ): Promise<LookupResult> {
-	const api = await contextDev();
+	const api = contextDev();
 	if (!api) {
 		return { outcome: "skipped", reason: "Context.dev is not configured." };
 	}
 
 	try {
-		const response = await api.brand.retrieve(params);
+		const response = await cachedBrand(
+			{
+				operation: "brand.retrieve",
+				domain: params.type === "by_domain" ? params.domain : undefined,
+				key: JSON.stringify(params),
+				target: { companyId: target?.companyId },
+				previewUser: target?.previewUser,
+			},
+			() => api.brand.retrieve(params),
+			"maxAgeMs" in params && params.maxAgeMs === 0,
+		);
 		const brand = response.brand as Brand | undefined;
 
 		if (!brand) return { outcome: "skipped", reason: "No brand matched." };
@@ -289,30 +265,24 @@ function classify(cause: unknown): LookupResult {
 }
 
 const apiErrorBody = z
-	.object({
-		error_code: z.string().optional().catch(undefined),
-		message: z.string().optional().catch(undefined),
-	})
+	.object({ error_code: z.string().optional().catch(undefined) })
 	.catch({});
 
 function errorCode(error: APIError): string | undefined {
 	return apiErrorBody.parse(error.error).error_code;
 }
 
-function recognisedKeyFailure(error: APIError): boolean {
-	const body = apiErrorBody.parse(error.error);
-	const detail = [body.error_code, body.message, error.message]
-		.filter((value) => value !== undefined)
-		.join(" ");
-
-	return /(usage|credit|quota|allowance|billing|rate.?limit|limit.?exceeded|insufficient.?permission)/i.test(
-		detail,
-	);
+export function describe(cause: unknown): string {
+	return withoutKey(
+		cause instanceof APIError
+			? `${cause.status ?? "?"} ${errorCode(cause) ?? cause.message}`
+			: cause instanceof Error
+				? cause.message
+				: String(cause),
+	).slice(0, CONTEXT.errorChars);
 }
 
-export function describe(cause: unknown): string {
-	if (cause instanceof APIError) {
-		return `${cause.status ?? "?"} ${errorCode(cause) ?? cause.message}`;
-	}
-	return cause instanceof Error ? cause.message : String(cause);
+function withoutKey(text: string): string {
+	const key = contextDevApiKey();
+	return key ? text.split(key).join(CONTEXT.redactedKey) : text;
 }

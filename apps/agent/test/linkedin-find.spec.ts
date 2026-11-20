@@ -1,9 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { linkedinSlug } from "../agent/lib/linkedin";
 import {
 	candidateFrom,
 	candidateSlugs,
-	guessedSlugs,
-	profileSlug,
 	searchedSlugs,
 } from "../agent/lib/linkedin-find";
 import type { Person } from "../agent/lib/people";
@@ -32,14 +31,10 @@ function person(overrides: Partial<Person>): Person {
 
 describe("finding a LinkedIn profile by name", () => {
 	it("reads the slug from a profile URL and ignores company pages", () => {
-		expect(profileSlug("https://www.linkedin.com/in/Sam-Stehno/?trk=x")).toBe(
+		expect(linkedinSlug("https://www.linkedin.com/in/Sam-Stehno/?trk=x")).toBe(
 			"sam-stehno",
 		);
-		expect(profileSlug("https://www.linkedin.com/company/oxy")).toBeNull();
-	});
-
-	it("guesses the usual vanity addresses", () => {
-		expect(guessedSlugs(sam)).toEqual(["sam-stehno", "samstehno"]);
+		expect(linkedinSlug("https://www.linkedin.com/company/oxy")).toBeNull();
 	});
 
 	it("keeps only search results that carry the surname", () => {
@@ -55,11 +50,10 @@ describe("finding a LinkedIn profile by name", () => {
 		).toEqual(["x-9"]);
 	});
 
-	it("tries an exact name slug first, then the guesses, and caps the reads", () => {
+	it("tries an exact name slug first, and uses only returned profiles", () => {
 		expect(candidateSlugs(sam, ["pavel-stehno-1", "sam-stehno-42"])).toEqual([
 			"sam-stehno-42",
-			"sam-stehno",
-			"samstehno",
+			"pavel-stehno-1",
 		]);
 	});
 

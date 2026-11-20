@@ -6,12 +6,21 @@ import { schemas } from "@crm/validation";
 import type { GenericEndpointContext } from "better-auth";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, getSessionFromCtx } from "better-auth/api";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
+import { magicLink } from "better-auth/plugins/magic-link";
 import { organization } from "better-auth/plugins/organization";
+import { z } from "zod";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
+import { AUTH_ERROR, MAGIC_LINK } from "./auth-config";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
+import { emailEnabled } from "./email";
 import { env } from "./env";
+import { deliverMagicLink } from "./magic-link";
 import {
 	activeOrganizationForNewSession,
 	activeOrganizationOfSession,
@@ -119,6 +128,12 @@ export const auth = betterAuth({
 	rateLimit: {
 		enabled: true,
 		storage: "database",
+		customRules: {
+			[MAGIC_LINK.paths.send]: {
+				window: MAGIC_LINK.send.windowSeconds,
+				max: MAGIC_LINK.send.max,
+			},
+		},
 	},
 
 	advanced: {
@@ -139,6 +154,36 @@ export const auth = betterAuth({
 	},
 
 	plugins: [
+		{
+			id: "magic-link-redirect-guard",
+			hooks: {
+				before: [
+					{
+						matcher: (ctx) => ctx.path === MAGIC_LINK.paths.verify,
+						handler: createAuthMiddleware(async (ctx) => {
+							for (const key of [
+								"callbackURL",
+								"newUserCallbackURL",
+								"errorCallbackURL",
+							]) {
+								const target = ctx.query?.[key];
+								if (target === undefined) continue;
+								if (
+									!z.string().safeParse(target).success ||
+									!URL.canParse(target, env.appUrl) ||
+									!env.trustedOrigins.includes(
+										new URL(target, env.appUrl).origin,
+									)
+								)
+									throw new APIError("FORBIDDEN", {
+										message: "Invalid sign-in destination.",
+									});
+							}
+						}),
+					},
+				],
+			},
+		},
 		...(slackOAuth
 			? [
 					genericOAuth({
@@ -228,6 +273,20 @@ export const auth = betterAuth({
 					slackOAuthCallback,
 				]
 			: []),
+		...(emailEnabled()
+			? [
+					magicLink({
+						expiresIn: MAGIC_LINK.expiresInSeconds,
+						storeToken: "hashed",
+						disableSignUp: false,
+						rateLimit: {
+							window: MAGIC_LINK.verify.windowSeconds,
+							max: MAGIC_LINK.verify.max,
+						},
+						sendMagicLink: deliverMagicLink,
+					}),
+				]
+			: []),
 		organization({
 			allowUserToCreateOrganization: false,
 			cancelPendingInvitationsOnReInvite: true,
@@ -285,6 +344,7 @@ export const auth = betterAuth({
 					if (hasSignInAllowList() && !isWorkspaceEmail(user.email)) {
 						const domain = primaryWorkspaceDomain();
 						throw new APIError("FORBIDDEN", {
+							code: AUTH_ERROR.signInNotAllowed,
 							message: domain
 								? `This CRM is private. Sign in with your @${domain} account.`
 								: "This CRM is private. That address is not on the allow-list.",

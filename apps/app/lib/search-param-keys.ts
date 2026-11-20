@@ -24,6 +24,8 @@ export const SEARCH_PARAM = {
 		switcher: "k",
 		closeDeal: "closeDeal",
 		closeStage: "closeStage",
+		closeAfter: "closeAfter",
+		closeBefore: "closeBefore",
 	},
 	overview: {
 		scope: "scope",

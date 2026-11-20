@@ -10,15 +10,21 @@ export type MockCompany = {
 };
 
 export const OWNER = {
-	name: "Patrick Onusko",
+	name: "Jordan Lee",
 	avatar: "/landing/avatar-patrick.jpg",
 };
 
+export const SAMPLE_WORKSPACE = {
+	name: "Acme Studio",
+	domain: "acme.example",
+	industry: "Marketing agency",
+} as const;
+
 export const MOCK_COMPANIES: MockCompany[] = [
 	{
-		name: "Comp AI",
-		domain: "trycomp.ai",
-		industry: "Retail & E-commerce",
+		name: SAMPLE_WORKSPACE.name,
+		domain: SAMPLE_WORKSPACE.domain,
+		industry: SAMPLE_WORKSPACE.industry,
 		owner: OWNER,
 		contacts: "1",
 		deals: "0",

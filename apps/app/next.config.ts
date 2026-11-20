@@ -3,11 +3,6 @@ import type { NextConfig } from "next";
 
 loadRootEnv();
 
-const apiUrl =
-	process.env.API_URL ??
-	process.env.NEXT_PUBLIC_API_URL ??
-	"http://localhost:3001";
-
 const allowedDevOrigins = (process.env.APP_URL ?? "")
 	.split(",")
 	.flatMap((origin) => {
@@ -21,9 +16,9 @@ const allowedDevOrigins = (process.env.APP_URL ?? "")
 const nextConfig: NextConfig = {
 	allowedDevOrigins,
 
-	env: {
-		NEXT_PUBLIC_API_URL: apiUrl,
-	},
+	...(process.env.CRM_PROJECT_PROXY === "1" && {
+		pageExtensions: ["tsx", "ts", "jsx"],
+	}),
 
 	transpilePackages: ["@crm/auth", "@crm/db", "@crm/telemetry", "@crm/ui"],
 
@@ -32,6 +27,7 @@ const nextConfig: NextConfig = {
 	images: {
 		remotePatterns: [
 			{ protocol: "https", hostname: "**.blob.vercel-storage.com" },
+			{ protocol: "https", hostname: "*.storage.*.*.aws.neon.tech" },
 		],
 	},
 

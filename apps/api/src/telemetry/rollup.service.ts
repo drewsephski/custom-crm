@@ -8,6 +8,7 @@ import {
 	StageOutcome,
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
+import { blobEnabled } from "@crm/db/blob";
 import { configuredAgentModel } from "@crm/db/settings";
 import { runAsSystem } from "@crm/db/tenancy";
 import { CONTACT_CAP_REASON } from "@crm/db/tracking";
@@ -140,14 +141,12 @@ export class RollupService {
 	}
 
 	private async shape(): Promise<Properties> {
-		const [model, members, ssoProviders, postgres, contextKey] =
-			await Promise.all([
-				Promise.resolve(configuredAgentModel()),
-				this.db.member.count(),
-				this.db.ssoProvider.count(),
-				this.postgresMajor(),
-				this.db.appSetting.findFirst({ select: { contextDevApiKey: true } }),
-			]);
+		const [model, members, ssoProviders, postgres] = await Promise.all([
+			Promise.resolve(configuredAgentModel()),
+			this.db.member.count(),
+			this.db.ssoProvider.count(),
+			this.postgresMajor(),
+		]);
 
 		return {
 			node_version: process.versions.node.split(".")[0] ?? null,
@@ -155,8 +154,8 @@ export class RollupService {
 			members_bucket: bucket(members),
 
 			cap_perplexity: isSet("PERPLEXITY_API_KEY"),
-			cap_context_dev: Boolean(contextKey?.contextDevApiKey?.trim()),
-			cap_blob: isSet("BLOB_READ_WRITE_TOKEN"),
+			cap_context_dev: isSet("CONTEXT_DEV_API_KEY"),
+			cap_blob: blobEnabled(),
 			cap_github: isSet("GITHUB_TOKEN"),
 			cap_redis: isSet("REDIS_URL"),
 			cap_agent_bridge: isSet("AGENT_BRIDGE_SECRET"),

@@ -6,7 +6,6 @@ export const MCP = {
 		defaultListLimit: 10,
 	},
 	api: {
-		baseUrl: "http://127.0.0.1:3001",
 		timeoutMs: 10 * SECOND_MS,
 	},
 	discovery: {

@@ -1,0 +1,134 @@
+{
+	"$schema": "https://openapi.vercel.sh/vercel.json",
+	"services": {
+		"app": {
+			"root": "apps/app",
+			"framework": "nextjs",
+			"buildCommand": "CRM_PROJECT_PROXY=1 bun run build",
+			"devCommand": "CRM_PROJECT_PROXY=1 bun run dev --port $PORT",
+			"bindings": [
+				{
+					"type": "service",
+					"service": "api",
+					"format": "url",
+					"env": "INTERNAL_API_URL"
+				},
+				{
+					"type": "service",
+					"service": "agent",
+					"format": "url",
+					"env": "INTERNAL_AGENT_URL"
+				}
+			]
+		},
+		"api": {
+			"root": "apps/api",
+			"framework": "nestjs",
+			"entrypoint": "src/main.ts",
+			"buildCommand": "bun run build && node scripts/release-database.mjs",
+			"devCommand": "bun src/main.ts",
+			"bindings": [
+				{
+					"type": "service",
+					"service": "agent",
+					"format": "url",
+					"env": "INTERNAL_AGENT_URL"
+				}
+			]
+		},
+		"agent": {
+			"root": "apps/agent",
+			"framework": "eve",
+			"devCommand": "bun run dev:headless --port $PORT",
+			"bindings": [
+				{
+					"type": "service",
+					"service": "api",
+					"format": "url",
+					"env": "INTERNAL_API_URL"
+				},
+				{
+					"type": "service",
+					"service": "agent",
+					"format": "url",
+					"env": "INTERNAL_AGENT_URL"
+				}
+			]
+		}
+	},
+	"proxy": {
+		"entrypoint": "apps/app/proxy.js"
+	},
+	"rewrites": [
+		{
+			"source": "/api/images/workspaces/:path*",
+			"destination": {
+				"service": "app"
+			}
+		},
+		{
+			"source": "/api/research/events",
+			"destination": {
+				"service": "app"
+			}
+		},
+		{
+			"source": "/api/:path*",
+			"destination": {
+				"service": "api"
+			}
+		},
+		{
+			"source": "/openapi.json",
+			"destination": {
+				"service": "api"
+			}
+		},
+		{
+			"source": "/internal/:job(sync/(?:mailboxes|google|rates)|archive/prune|tracking/retention|telemetry/rollup)",
+			"destination": {
+				"service": "api"
+			}
+		},
+		{
+			"source": "/eve/v1/cron/:token",
+			"destination": {
+				"service": "agent"
+			}
+		},
+		{
+			"source": "/.well-known/workflow/:path*",
+			"destination": {
+				"service": "agent"
+			}
+		},
+		{
+			"source": "/(.*)",
+			"destination": {
+				"service": "app"
+			}
+		}
+	],
+	"crons": [
+		{
+			"path": "/internal/sync/mailboxes",
+			"schedule": "*/5 * * * *"
+		},
+		{
+			"path": "/internal/sync/rates",
+			"schedule": "0 6 * * *"
+		},
+		{
+			"path": "/internal/telemetry/rollup",
+			"schedule": "0 7 * * *"
+		},
+		{
+			"path": "/internal/tracking/retention",
+			"schedule": "0 4 * * *"
+		},
+		{
+			"path": "/internal/archive/prune",
+			"schedule": "0 5 * * *"
+		}
+	]
+}

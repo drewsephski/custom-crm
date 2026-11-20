@@ -19,11 +19,15 @@ import {
 } from "@crm/db/pipeline";
 import {
 	BadRequestException,
+	ConflictException,
 	Injectable,
 	Logger,
 	NotFoundException,
 } from "@nestjs/common";
-import { AgentTriggerService } from "../agent/agent-trigger.service";
+import {
+	AgentTriggerService,
+	type CrmEventInput,
+} from "../agent/agent-trigger.service";
 import { ARCHIVE } from "../archive/archive-config";
 import {
 	ActivityStampService,
@@ -50,6 +54,7 @@ import {
 	paginate,
 	resolveOrderBy,
 } from "../trpc/list-input";
+import { lockBoardStages } from "./board-position";
 import { BOARD } from "./deals.config";
 import type {
 	BoardPlacement,
@@ -101,6 +106,11 @@ const BOARD_ORDER = [
 
 const LOST_REASON_REQUIRED =
 	"Say why it was lost. A lost deal with no reason teaches nobody anything.";
+
+const MOVED_MEANWHILE =
+	"Somebody else moved this deal at the same moment. Try again.";
+
+type BoardDeal = { id: string; stageId: string; companyId: string };
 
 const SORTABLE: OrderByColumns<Prisma.DealOrderByWithRelationInput[]> = {
 	name: (dir) => [{ name: dir }],
@@ -376,6 +386,7 @@ export class DealsService {
 			const { deal, stage } = await this.agent.withCrmEvents(
 				async (tx, emit) => {
 					const stage = await this.stageForCreate(tx, input.stageId);
+					await lockBoardStages(tx, [stage.id]);
 					const closed = isClosedOutcome(stage.outcome);
 					const created = await tx.deal.create({
 						data: {
@@ -595,19 +606,12 @@ export class DealsService {
 
 	async setStage(input: SetStageInput, actingUserId: string) {
 		const closedReason = input.closedReason?.trim();
-		const transition = await this.agent.withCrmEvents(async (tx, emit) => {
-			const [deal] = await tx.$queryRaw<
-				Array<{ id: string; stageId: string; companyId: string }>
-			>`
-				SELECT id, "stageId", "companyId"
-				FROM deal
-				WHERE id = ${input.id}
-				FOR UPDATE
-			`;
-
-			if (!deal) {
-				throw new NotFoundException(`No deal with id ${input.id}.`);
-			}
+		const move = async (
+			tx: Prisma.TransactionClient,
+			emit: (event: CrmEventInput) => Promise<void>,
+		) => {
+			const deal = await this.lockDealOnBoard(tx, input.id, input.stageId);
+			if (!deal) return null;
 
 			const stages = await tx.pipelineStage.findMany({
 				where: { id: { in: [deal.stageId, input.stageId] } },
@@ -711,7 +715,13 @@ export class DealsService {
 			}
 
 			return { changed: true as const, deal, from, to, now };
-		});
+		};
+
+		let transition: Awaited<ReturnType<typeof move>> = null;
+		for (let turn = 0; turn < BOARD.move.attempts && !transition; turn += 1) {
+			transition = await this.agent.withCrmEvents(move);
+		}
+		if (!transition) throw new ConflictException(MOVED_MEANWHILE);
 
 		const { deal, from, to } = transition;
 		const stage = stageView(to);
@@ -749,6 +759,34 @@ export class DealsService {
 			);
 		}
 		return stage;
+	}
+
+	private async lockDealOnBoard(
+		tx: Prisma.TransactionClient,
+		dealId: string,
+		toStageId: string,
+	): Promise<BoardDeal | null> {
+		const seen = await tx.deal.findUnique({
+			where: { id: dealId },
+			select: { stageId: true },
+		});
+		if (!seen) {
+			throw new NotFoundException(`No deal with id ${dealId}.`);
+		}
+
+		await lockBoardStages(tx, [seen.stageId, toStageId]);
+
+		const [deal] = await tx.$queryRaw<BoardDeal[]>`
+			SELECT id, "stageId", "companyId"
+			FROM deal
+			WHERE id = ${dealId}
+			FOR UPDATE
+		`;
+		if (!deal) {
+			throw new NotFoundException(`No deal with id ${dealId}.`);
+		}
+
+		return deal.stageId === seen.stageId ? deal : null;
 	}
 
 	private async boardPosition(

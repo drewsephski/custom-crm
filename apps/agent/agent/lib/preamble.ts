@@ -35,9 +35,7 @@ export async function sessionPreamble(
 export async function composeClosing(
 	us: WorkspaceIdentity | null,
 ): Promise<string> {
-	return [usMarkdown(us), await capabilitiesMarkdown()]
-		.filter(Boolean)
-		.join("\n\n");
+	return [usMarkdown(us), capabilitiesMarkdown()].filter(Boolean).join("\n\n");
 }
 
 async function closing(): Promise<string> {
@@ -387,7 +385,7 @@ export async function workspacePreamble(
 		"You are describing us to a colleague who has just joined, not writing our",
 		"home page back to us.",
 		"",
-		await capabilitiesMarkdown(),
+		capabilitiesMarkdown(),
 	].join("\n");
 
 	return { markdown, focus: {} };

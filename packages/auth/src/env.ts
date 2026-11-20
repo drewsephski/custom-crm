@@ -84,4 +84,18 @@ export function isSlackConfigured(): boolean {
 	return env.slack !== undefined;
 }
 
+export type EmailSettings = {
+	apiKey: string | undefined;
+	from: string | undefined;
+	isProduction: boolean;
+};
+
+export function emailSettings(): EmailSettings {
+	return {
+		apiKey: optional("RESEND_API_KEY"),
+		from: optional("EMAIL_FROM"),
+		isProduction: process.env.NODE_ENV === "production",
+	};
+}
+
 export { apiUrl, appUrl };

@@ -6,23 +6,76 @@ reads once.
 
 ## First run
 
+Nothing here needs Docker. The database is a Neon branch.
+
 ```sh
-cp .env.example .env        # fill DATABASE_URL, BETTER_AUTH_SECRET, ALLOWED_SIGN_IN
-docker compose up -d        # Postgres, matching .env.example
-bun run db:migrate && bun run db:seed
-bun run dev                 # app :3000, api :3001, agent :2000
+cp .env.example .env                    # fill BETTER_AUTH_SECRET
+neon link --project-id <id>             # writes .neon
+neon checkout development --create      # a development branch; writes DATABASE_URL into .env
+# add the branch host to DEV_DATABASE_HOSTS in .env, and the production host to PROTECTED_DATABASE_HOSTS
+bun run db:deploy                       # apply migrations to the development branch
+bun run db:seed                         # optional: a demo workspace
+bun run dev                             # app :3000, api :3001, agent :2000
 ```
 
 Prisma from the repo root: `db:generate`, `db:migrate`, `db:push`, `db:reset`,
 `db:seed`, `db:studio`, `db:deploy`.
 
 `dev` depends on `^dev:prepare`, so every start applies pending migrations and
-regenerates the Prisma client before a single server boots. That is why the first
-run needs `db:migrate` only for the seed that follows it. When the database and
+regenerates the Prisma client before a single server boots. When the database and
 `schema.prisma` have diverged past what `migrate deploy` can reconcile,
 `dev:prepare` stops the whole run rather than starting servers against a schema
 they do not match — reconcile with `db:migrate`, or `db:reset` when the divergence
 is an edited migration that has already been applied.
+
+A local Postgres still works: `docker compose up -d` and
+`DATABASE_URL="postgresql://postgres:postgres@localhost:5432/crm?schema=public"`.
+
+## Neon
+
+Set S3_PRIVATE_BUCKET to the private uploads bucket for workspace images. The app checks membership before issuing a one-minute signed read. Previous public image URLs continue to work.
+
+`neon.ts` declares the Neon services: Postgres, the `assets` bucket, the `cron`
+function and Realtime. `.neon` pins the project and branch and is not committed.
+
+| Branch | Use | Who writes to it |
+| --- | --- | --- |
+| `production` | The live database. Protected in Neon. | Only a release build, through `prisma migrate deploy` |
+| `development` | `bun run dev`, `db:migrate`, `db:seed`, browser checks | A developer's machine |
+| a `crm_test` database on `development` | The test suite, when no local Postgres exists | `bun run db:test` and `bun run test` |
+
+- **`DATABASE_URL` is the pooled host.** `packages/db/src/database-host.ts` strips
+  `-pooler` for Prisma's CLI, so migrations use the direct host of the same
+  database. Set DATABASE_URL_UNPOOLED to provide direct credentials. Prisma checks the endpoint and database against DATABASE_URL. Tenant scope is transaction-local
+  (`docs/tenancy.md`), so the pooler's transaction mode is safe.
+- **Live research uses server-sent events.** Neon Realtime rejects queries against the research table because PostgreSQL enforces row security.
+  Each stream checks the selected record through authenticated tRPC. Every check validates current membership.
+  The stream signals a change, and the panel fetches the findings through tRPC.
+  The panel polls during reconnection. Research streams require no Realtime secret.
+- **Every query pays the network round trip.** A laptop far from the region is
+  slow: 72 migrations take about 110 seconds at a 90 ms round trip.
+- **Function triggers are disabled until `CRON_TARGET_URL` is set**, so Vercel
+  crons and Neon triggers never run the same job twice by default.
+
+### No development command reaches production
+
+`packages/db/src/database-guard.ts` decides, and `scripts/require-local-db.ts`
+runs it before `db:migrate`, `db:push`, `db:reset`, `db:seed` and `dev`.
+
+- It judges **every** `DATABASE_URL` it can see: the shell, `.env.local` and
+  `.env`. Prisma uses the shell value when one exists, so a guard that read only
+  the file passed a production URL exported in the terminal.
+- **A protected target has no override.** A target is protected when
+  `NEON_BRANCH` is `production`, `prod`, `main` or `live`, or when its host is
+  listed in `PROTECTED_DATABASE_HOSTS`. `ALLOW_REMOTE_DB=1` does not unlock it,
+  and neither does listing the host in `DEV_DATABASE_HOSTS`.
+- A remote host that is not protected runs only when `DEV_DATABASE_HOSTS` names
+  it, or with `ALLOW_REMOTE_DB=1`.
+- **`db:deploy` has its own check** (`scripts/require-deploy-target.ts`). It allows local databases and hosts listed in `DEV_DATABASE_HOSTS`. It refuses a protected
+  target unless `VERCEL_ENV` is `production` or `ALLOW_PRODUCTION_MIGRATE=1`
+  confirms it.
+- The `production` branch is also marked protected in Neon.
+- CI uses a Postgres service container. It holds no Neon credential.
 
 ## Google Cloud
 
@@ -93,14 +146,13 @@ the live database. On 2026-08-01 eleven migrations landed on Neon from a laptop.
 
 1. **Pull somewhere inert**: `vercel env pull .env.vercel`.
 2. **`packages/db/scripts/require-local-db.ts` guards `db:migrate`, `db:push`,
-   `db:reset`, `db:seed`** and takes `ALLOW_REMOTE_DB=1`. `db:deploy` is unguarded on
-   purpose. It reads the root files directly rather than `process.env`, because Bun
-   auto-loads the working directory's `.env` while Prisma's CLI only sees
-   `@crm/env/load`.
+   `db:reset`, `db:seed`**. It reads the shell and the root files, and it refuses a
+   protected target with no override. See "No development command reaches
+   production" above.
 
 ## Migrations run on the production deploy, and nowhere else
 
-`apps/api/scripts/build-func.mjs` runs `prisma migrate deploy` during the crm-api
+`apps/api/scripts/release-database.mjs` runs `prisma migrate deploy` during the crm-api
 build, gated on `VERCEL_ENV === "production"`. The schema therefore moves when the
 release pull request merges and `release` deploys — with the code that needs it,
 and once rather than once per branch.

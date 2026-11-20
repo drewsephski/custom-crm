@@ -1,5 +1,19 @@
 export const BLOB_HOST_SUFFIX = ".blob.vercel-storage.com";
 
+export const NEON_STORAGE_HOST =
+	/^[a-z0-9-]+\.storage\.[a-z0-9-]+\.[a-z0-9-]+\.aws\.neon\.tech$/;
+
+export const PRIVATE_IMAGE_PATH = "/api/images/workspaces/";
+export function privateImagePrefix(appUrl = process.env.APP_URL): string {
+	const origin = appUrl?.split(",")[0]?.trim() || "http://localhost:3000";
+	return new URL(PRIVATE_IMAGE_PATH, origin).href;
+}
+
+export const MIRROR_URL_MARKERS = [
+	BLOB_HOST_SUFFIX,
+	".aws.neon.tech/",
+] as const;
+
 export const COMPANY_IMAGE_FIELDS = [
 	"logoUrl",
 	"logoDarkUrl",
@@ -11,17 +25,24 @@ export type CompanyImageField = (typeof COMPANY_IMAGE_FIELDS)[number];
 
 const OPTIMIZABLE = new Set(["jpg", "jpeg", "png", "webp", "avif", "gif"]);
 
-export function isMirrored(url: string | null | undefined): boolean {
+function isPublicMirror(url: string | null | undefined): boolean {
 	if (!url) return false;
 	try {
-		return new URL(url).hostname.endsWith(BLOB_HOST_SUFFIX);
+		const { hostname } = new URL(url);
+		return (
+			hostname.endsWith(BLOB_HOST_SUFFIX) || NEON_STORAGE_HOST.test(hostname)
+		);
 	} catch {
 		return false;
 	}
 }
 
+export function isMirrored(url: string | null | undefined): boolean {
+	return Boolean(url?.startsWith(privateImagePrefix())) || isPublicMirror(url);
+}
+
 export function isOptimizable(url: string | null | undefined): boolean {
-	if (!isMirrored(url) || !url) return false;
+	if (!isPublicMirror(url) || !url) return false;
 
 	try {
 		const extension = new URL(url).pathname.split(".").pop()?.toLowerCase();

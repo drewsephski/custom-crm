@@ -1,6 +1,13 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	describe,
+	expect,
+	it,
+	spyOn,
+} from "bun:test";
 import { db, EnrichmentStatus } from "@crm/db";
-import { readContextDevKey, writeContextDevKey } from "@crm/db/settings";
 import { runBrand } from "../agent/lib/brand";
 import { settle } from "../agent/lib/enrichment";
 
@@ -148,19 +155,20 @@ async function domainlessCompany(status: EnrichmentStatus) {
 	return row.id;
 }
 
-describe("a brand task on a company with no domain", () => {
-	let key: string | null;
+describe("a brand task and the platform key", () => {
+	let key: string | undefined;
 
-	beforeAll(async () => {
-		key = await readContextDevKey(db);
+	beforeAll(() => {
+		key = process.env.CONTEXT_DEV_API_KEY;
 	});
 
-	afterAll(async () => {
-		await writeContextDevKey(db, key ?? "");
+	afterAll(() => {
+		if (key === undefined) delete process.env.CONTEXT_DEV_API_KEY;
+		else process.env.CONTEXT_DEV_API_KEY = key;
 	});
 
-	it("marks the company skipped, because no sweep will find it again", async () => {
-		await writeContextDevKey(db, "ctx-test-key");
+	it("marks a company with no domain skipped, because no sweep will find it again", async () => {
+		process.env.CONTEXT_DEV_API_KEY = "ctx-test-key";
 		const id = await domainlessCompany(EnrichmentStatus.PENDING);
 
 		const result = await runBrand({ companyId: id });
@@ -170,8 +178,53 @@ describe("a brand task on a company with no domain", () => {
 	});
 
 	it("still leaves a keyless install's company pending for the sweep", async () => {
-		await writeContextDevKey(db, "");
+		delete process.env.CONTEXT_DEV_API_KEY;
 		const id = await domainlessCompany(EnrichmentStatus.PENDING);
+
+		const result = await runBrand({ companyId: id });
+
+		expect(result.enriched).toBe(false);
+		expect(await statusOf(id)).toBe(EnrichmentStatus.PENDING);
+	});
+
+	it("settles a keyless lookup before anything marks the row running, and calls nobody", async () => {
+		delete process.env.CONTEXT_DEV_API_KEY;
+		const id = await company(EnrichmentStatus.PENDING);
+		const network = spyOn(globalThis, "fetch");
+		let charges = 0;
+
+		try {
+			const result = await runBrand({
+				companyId: id,
+				spend: () => {
+					charges += 1;
+					return { ok: true };
+				},
+			});
+
+			expect(result).toEqual({
+				enriched: false,
+				reason: "Context.dev is not configured, so there is nowhere to look.",
+			});
+			expect(charges).toBe(0);
+			expect(network).not.toHaveBeenCalled();
+		} finally {
+			network.mockRestore();
+		}
+
+		const row = await db.company.findUniqueOrThrow({
+			where: { id },
+			select: { enrichmentStatus: true, enrichmentError: true },
+		});
+		expect(row).toEqual({
+			enrichmentStatus: EnrichmentStatus.PENDING,
+			enrichmentError: null,
+		});
+	});
+
+	it("is not switched on by a blank variable", async () => {
+		process.env.CONTEXT_DEV_API_KEY = "   ";
+		const id = await company(EnrichmentStatus.PENDING);
 
 		const result = await runBrand({ companyId: id });
 
