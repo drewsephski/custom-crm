@@ -1,3 +1,4 @@
+import { memberOfWorkspace } from "@crm/auth/organization";
 import { workspaceDomains } from "@crm/auth/workspace";
 import { type Db, RecordSource } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
@@ -54,7 +55,10 @@ export class MailboxMatchService {
 		addresses: Set<string>;
 		domains: Set<string>;
 	}> {
-		const users = await this.db.user.findMany({ select: { email: true } });
+		const users = await this.db.user.findMany({
+			where: memberOfWorkspace(),
+			select: { email: true },
+		});
 
 		const addresses = new Set<string>();
 		const domains = new Set<string>(workspaceDomains());

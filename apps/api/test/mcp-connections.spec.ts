@@ -355,6 +355,7 @@ describe("MCP connections", () => {
 		const { service, updates } = serviceFor({
 			connection: {
 				id: connectionId,
+				organizationId: TEST_ORGANIZATION.id,
 				platformSlug: "linear",
 				status: "CONNECTED",
 				encryptedAccessToken: box.encrypt(
@@ -367,10 +368,32 @@ describe("MCP connections", () => {
 			},
 		});
 
-		await expect(service.token(connectionId)).resolves.toEqual({
+		await expect(
+			service.token(connectionId, TEST_ORGANIZATION.id),
+		).resolves.toEqual({
 			token: "access-token",
 			expiresAt,
 		});
 		expect(updates).toEqual([]);
+	});
+
+	it("refuses a token request that names another workspace", async () => {
+		const connectionId = "connection-2";
+		const { service } = serviceFor({
+			connection: {
+				id: connectionId,
+				organizationId: TEST_ORGANIZATION.id,
+				platformSlug: "linear",
+				status: "CONNECTED",
+				encryptedAccessToken: "unused",
+				encryptedRefreshToken: null,
+				tokenExpiresAt: null,
+				registration: {},
+			},
+		});
+
+		await expect(
+			service.token(connectionId, "another-workspace"),
+		).rejects.toThrow("The MCP connection is not active.");
 	});
 });

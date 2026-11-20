@@ -215,7 +215,10 @@ states it in the session instructions, and gives tools a shared "not configured,
 retrying will not help" result — **checked before the research budget is charged**. A
 missing key removes a place to look. **Never an error, never throws.**
 
-**`capabilities()` is async** because the Context key is a row;
+**`capabilities()` is async** because the Context key is a row in each workspace's
+`AppSetting`. It reads inside the caller's tenant scope. The boot log runs outside any
+session, so `logCapabilities()` reads the key once per workspace through
+`forEachOrganization` and prints how many workspaces have one (`bootLines()`);
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
@@ -226,6 +229,10 @@ resolver, and `lib/context-dev.ts` memoises its client on the key string.
   billable lookup costs: a brand lookup is 10 Context credits, a person enrich is
   20. Both charge 2, because the budget rations calls per contact and a session
   with a budget of 4 must still be able to make two of them.
+- **The budget is switched off for now.** `FOCUS.enforceBudget` in
+  `lib/focus-config.ts` is `false`, so `spend()` still counts units but never refuses.
+  Set it to `true` to ration vendor calls again. With it off, nothing caps how many
+  Context.dev calls one session makes.
 - `lib/tasks.ts` — `claimDue` leases with `FOR UPDATE SKIP LOCKED`.
 - **`schedules/dispatch.ts` is the only schedule and decides nothing.** "Every N
   minutes, the oldest ten contacts" belongs in a `dueAt`.
@@ -301,6 +308,36 @@ the backend factory** so it cannot be forgotten per session. Costs nothing —
 **Never give the sandbox `DATABASE_URL`.** CRM access is authored tools. A shell with
 credentials and network is exfiltration-shaped; with neither it is a text processor.
 
+## Chat research and adding records
+
+The private CRM chat (`builder` purpose, `CHAT` command) answers questions and may
+change the CRM in exactly one way: `add_to_crm`, when the user asks.
+
+- **Finding a person** starts with `find_linkedin_profile` (`lib/linkedin-find.ts`).
+  A web search index is fuzzy on names, so it searches LinkedIn only, adds the usual
+  vanity slugs (`first-last`, `firstlast`), reads at most
+  `CONTEXT.linkedinFind.maxProfiles` of them through Context.dev, and keeps only
+  profiles whose name matches. Each candidate says whether it works or worked at the
+  company the user named. `research_person` (Perplexity, or a Context.dev web search
+  when Perplexity is not set) is the fallback. A shared name is a question for the
+  user.
+- **`read_linkedin_profile`** reads a profile by URL or slug through Context.dev and
+  needs no email, unlike `get_linkedin_profile`, which checks a profile against an
+  address on a contact.
+- **`add_to_crm`** (`lib/crm-create.ts`) finds an existing contact by email or
+  LinkedIn URL and an existing company by domain or name, in the current workspace,
+  before it creates anything. New records are owned by the chat user, so the owner
+  membership trigger applies. It queues the same `agent-event`, `brand`,
+  `company-profile` and `identify` tasks the API queues for a rep's new record.
+  `chatAdditionApproval` asks the user in manual mode and approves in auto or
+  bypass. It denies research and team-agent sessions. It does not check the command
+  type: eve runs the approval again when the Approve click resumes the call, and
+  `builderCommandType` labels every input response `CREATE_AGENT`. A `CREATE_AGENT`
+  turn only calls `agent_builder`, which inherits no root tools. `execute` refuses
+  any session that is not a builder session.
+- **`web_fetch` stays limited** to links the user pasted and approved documentation.
+  Search results are read from the excerpts the search returns.
+
 ## Team-agent builder and runner
 
 `agent_builder` and `agent_runner` are declared subagents with independent
@@ -358,6 +395,24 @@ delegation paths for custom agents.
 - **Whoever started it can stop it**, plus the creator and workspace admins.
   `canCancel` is computed server-side per run and is what the button reads, so the
   control and the 403 cannot disagree.
+- **A run settles when its session parks.** `finish_run` only stages the summary
+  and result. `session.waiting` on the `run:` token then calls `finishStagedRun`,
+  which finishes a `RUNNING` run that has a staged summary. A run waiting for an
+  approval has no staged summary, so it stays open. `session.completed` fires only
+  at the 30-day session deadline, so it is a backstop, not the normal path.
+- **MCP tools belong to the runner, not the root.** `agent_runner/tools/mcp.ts`
+  resolves `<platform>__<tool>` tools at `session.started` from the pinned
+  manifest, the workspace's `CONNECTED` connection and its `REVIEWED` snapshots.
+  A declared subagent inherits no root tools, so a root-level MCP tool never
+  reaches the runner. Every callback enters the session's workspace with
+  `inSessionTenant`: the resolver, the approval and `execute`. `callMcpTool`
+  refuses a session whose workspace is not the one the tool was resolved for, and
+  the token request names the workspace in `x-crm-organization-id`. The API's
+  `/internal/mcp/connections/:id/token` answers only when the connection belongs
+  to that workspace. Tests that run under the test fallback workspace do not prove
+  any of this, because the fallback hides a missing scope.
+  `test/e2e/mcp-live-run.e2e.ts` runs a real deployed run against a local MCP
+  server. See "Running the live MCP check" below.
 - **`turn.cancelled` settles the run too**, keyed off `run:` in the continuation
   token, so a cancel from any other path still reaches `finishedAt` rather than
   leaving the run reading *Running* forever.
@@ -376,6 +431,28 @@ HTTP channel. It creates an isolated private conversation, dispatches the builde
 asserts the declared subagent path, verifies a READY side-effect-free manifest, and
 cleans up its rows. It skips visibly when the database, bridge secret or model
 credential is unavailable.
+
+### Running the live MCP check
+
+It spends a few model calls, so it is not in `bun run test`. Point every process at
+`crm_test`, never at a database with real data. Use one `AGENT_BRIDGE_SECRET` and
+one `MCP_ENCRYPTION_KEY` for all of them.
+
+1. `bun test/e2e/mcp-live-server.ts` in `apps/agent`, with
+   `MCP_LIVE_TOKENS="mcp-live-token-northstar:Northstar onboarding checklist"`.
+2. The API on port 3101: `PORT=3101 bun src/main.ts` in `apps/api`.
+3. `bunx eve build`, then `eve start --port 3010` in `apps/agent`, with
+   `API_URL=http://127.0.0.1:3101` and
+   `NODE_OPTIONS=--import=<abs path>/test/e2e/mcp-live-redirect.mjs`. The preload
+   sends the Linear MCP URL to the local server. Nothing in the product changes.
+4. `E2E_LIVE_MODEL=1 bun test/e2e/mcp-live-run.e2e.ts` in `apps/agent`.
+
+It seeds two workspaces. Northstar has a Linear connection and a deployed agent
+that may call `list_issues` only. Harbor has the same agent and no connection. The
+check passes when Northstar's run succeeds with the tool result, every MCP call
+carries Northstar's token, `delete_issue` never runs, Harbor's run never reaches an
+MCP server, and the token broker refuses Harbor's request for Northstar's
+connection. It deletes both workspaces when it ends.
 
 ## The bridge
 

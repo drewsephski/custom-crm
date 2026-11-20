@@ -27,7 +27,12 @@ import {
 } from "./scopes";
 import { notifySignedIn } from "./signed-in";
 import { slackConnectGuard } from "./slack-connect";
-import { rememberSlackInstall, replaceSlackConnection } from "./slack-grant";
+import {
+	rememberSlackInstall,
+	replaceSlackConnection,
+	type SlackAccountGrant,
+	SlackInstallExpiredError,
+} from "./slack-grant";
 import { slackOAuthCallback } from "./slack-oauth-callback";
 import { SLACK_REQUESTED_SCOPES, SLACK_USER_SCOPES } from "./slack-scopes";
 import { queueSlackInventorySync } from "./slack-sync";
@@ -319,12 +324,7 @@ export type Session = typeof auth.$Infer.Session;
 export type SessionUser = Session["user"];
 
 async function replaceSlackAccount(
-	account: {
-		id: string;
-		accountId: string;
-		providerId: string;
-		userId: string;
-	},
+	account: SlackAccountGrant & { providerId: string },
 	context: GenericEndpointContext | null,
 ): Promise<void> {
 	if (account.providerId !== SLACK_PROVIDER_ID) return;
@@ -348,10 +348,17 @@ async function replaceSlackAccount(
 		});
 	}
 
-	await runInTenant(organizationId, async () => {
-		await replaceSlackConnection(account);
-		await queueSlackInventorySync();
-	});
+	try {
+		await runInTenant(organizationId, async () => {
+			await replaceSlackConnection(account);
+			await queueSlackInventorySync();
+		});
+	} catch (error) {
+		if (error instanceof SlackInstallExpiredError) {
+			throw new APIError("BAD_REQUEST", { message: error.message });
+		}
+		throw error;
+	}
 }
 
 async function refuseUnverifiedPasswordLink(account: {

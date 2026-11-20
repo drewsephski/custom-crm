@@ -30,6 +30,27 @@ export async function ensureTestOrganization(
 	return organization.id;
 }
 
+export async function ensureTestMember(
+	userId: string,
+	organizationId: string = TEST_ORGANIZATION.id,
+): Promise<void> {
+	const { db } = await import("./client");
+
+	await runAsSystem("make a test user a member", () =>
+		db.member.upsert({
+			where: { organizationId_userId: { organizationId, userId } },
+			create: {
+				id: `${organizationId}-${userId}`,
+				organizationId,
+				userId,
+				role: "member",
+				createdAt: new Date(),
+			},
+			update: {},
+		}),
+	);
+}
+
 export async function ensureTestPipeline(
 	organizationId: string,
 ): Promise<ActivePipeline> {

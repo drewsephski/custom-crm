@@ -158,11 +158,13 @@
         "@prisma/client": "^7.10.1",
         "@prisma/driver-adapter-utils": "7.10.1",
         "@vercel/blob": "^2.6.1",
+        "pg": "^8.22.0",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@crm/typescript-config": "workspace:*",
         "@types/node": "^24.10.1",
-        "pg": "^8.22.0",
+        "@types/pg": "8.20.0",
         "prisma": "^7.10.1",
         "typescript": "5.9.2",
       },
@@ -282,6 +284,9 @@
     },
     "@nestjs/swagger": {
       "js-yaml": "5.4.2",
+    },
+    "@prisma/config": {
+      "effect": "3.22.4",
     },
     "@vercel/cli-config": {
       "zod": "4.6.7",
@@ -1516,7 +1521,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "effect": ["effect@3.20.0", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-qMLfDJscrNG8p/aw+IkT9W7fgj50Z4wG5bLBy0Txsxz8iUHjDIkOgO3SV0WZfnQbNG2VJYb0b+rDLMrhM4+Krw=="],
+    "effect": ["effect@3.22.4", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-RNshu7AXVxxDh6aS4lothhJ+QoZ4xSykbWNaaVdvDN72RMyVwhCGdALkyl1TbEydgAmRIdD1eTyJqBUGwSBGDA=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.399", "", {}, "sha512-lEcqhErbHjXRvd41rnWLpzbyU/IXfIYo7QwaFWmxGeLiLyY2TBCdHnWY88vB+p3ubnihRypDm66panXl7TylLA=="],
 

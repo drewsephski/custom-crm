@@ -1,15 +1,26 @@
+import { createHash } from "node:crypto";
 import { db } from "@crm/db";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { requireOrganizationId } from "@crm/db/tenancy";
 import type { OauthAccess } from "@crm/validation";
-import { connectionManagerOfWorkspace } from "./organization";
-import { SLACK_PROVIDER_ID } from "./scopes";
 import { SLACK_CONNECTION } from "./slack-config";
 
-export async function rememberSlackInstall(grant: OauthAccess): Promise<void> {
-	const { team, authed_user: installer } = grant;
-	if (!team || !installer) return;
+export class SlackInstallExpiredError extends Error {
+	override readonly name = "SlackInstallExpiredError";
+}
 
+export function slackBotTokenHash(botToken: string): string {
+	return createHash("sha256").update(botToken).digest("hex");
+}
+
+export async function rememberSlackInstall(grant: OauthAccess): Promise<void> {
+	const { team, authed_user: installer, access_token: botToken } = grant;
+	if (!team || !installer || !botToken) return;
+
+	const key = {
+		botTokenHash: slackBotTokenHash(botToken),
+		installerId: installer.id,
+	};
 	const install = {
 		teamId: team.id,
 		teamName: team.name ?? null,
@@ -19,38 +30,83 @@ export async function rememberSlackInstall(grant: OauthAccess): Promise<void> {
 	};
 
 	await db.slackInstallation.upsert({
-		where: { installerId: installer.id },
-		create: { installerId: installer.id, ...install },
+		where: { botTokenHash_installerId: key },
+		create: { ...key, ...install },
 		update: install,
 	});
 
 	await forgetStaleInstalls();
 }
 
-export async function replaceSlackConnection(account: {
+export type SlackAccountGrant = {
 	id: string;
 	accountId: string;
-}): Promise<void> {
+	userId: string;
+	accessToken?: string | null;
+	scope?: string | null;
+};
+
+export async function replaceSlackConnection(
+	account: SlackAccountGrant,
+): Promise<void> {
 	const organizationId = requireOrganizationId();
+	const botToken = account.accessToken;
+	if (!botToken) {
+		throw new SlackInstallExpiredError(
+			"Slack did not hand over a bot token. Connect Slack again.",
+		);
+	}
 
 	await db.$transaction(async (tx) => {
 		await lockIdempotencyKey(tx, SLACK_CONNECTION.locks.connection);
 
-		await tx.account.deleteMany({
-			where: {
-				providerId: SLACK_PROVIDER_ID,
-				id: { not: account.id },
-				user: connectionManagerOfWorkspace(organizationId),
-			},
-		});
-
+		const key = {
+			botTokenHash: slackBotTokenHash(botToken),
+			installerId: account.accountId,
+		};
 		const install = await tx.slackInstallation.findUnique({
-			where: { installerId: account.accountId },
+			where: { botTokenHash_installerId: key },
 		});
-		if (!install) return;
+		if (
+			!install ||
+			install.createdAt.getTime() <
+				Date.now() - SLACK_CONNECTION.install.staleMs
+		) {
+			throw new SlackInstallExpiredError(
+				"The Slack authorization expired before it finished. Connect Slack again.",
+			);
+		}
 
 		await tx.slackInstallation.delete({
-			where: { installerId: account.accountId },
+			where: { botTokenHash_installerId: key },
+		});
+
+		const previous = await tx.slackConnection.findUnique({
+			where: { organizationId },
+			select: { teamId: true },
+		});
+		if (previous && previous.teamId !== install.teamId) {
+			await tx.slackChannel.deleteMany({});
+			await tx.slackMemberMatch.deleteMany({});
+		}
+
+		const connection = {
+			teamId: install.teamId,
+			teamName: install.teamName,
+			botToken,
+			botScopes: account.scope ?? "",
+			installerSlackUserId: account.accountId,
+			installedById: account.userId,
+		};
+		await tx.slackConnection.upsert({
+			where: { organizationId },
+			create: { organizationId, ...connection },
+			update: connection,
+		});
+
+		await tx.account.update({
+			where: { id: account.id },
+			data: { accessToken: null, refreshToken: null },
 		});
 
 		await tx.slackWorkspaceGrant.deleteMany({

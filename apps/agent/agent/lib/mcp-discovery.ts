@@ -1,4 +1,5 @@
 import { db, type Prisma } from "@crm/db";
+import { requireOrganizationId } from "@crm/db/tenancy";
 import { vendorAccess, vendorBySlug } from "@crm/mcp-integrations/catalog";
 import {
 	classifyTool,
@@ -40,7 +41,10 @@ export async function runMcpToolDiscovery(
 	}
 
 	try {
-		const token = await mcpConnectionToken(connection.id);
+		const token = await mcpConnectionToken(
+			connection.id,
+			requireOrganizationId(),
+		);
 		const mode =
 			connection.accessMode === "READ_ONLY" ? "read_only" : "read_write";
 		const tools = await listTools(vendorAccess(vendor, mode).url, token.token);

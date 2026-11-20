@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
+import {
+	ensureTestMember,
+	TEST_ORGANIZATION,
+	testStageIds,
+} from "@crm/db/testing";
 import { AgentTriggerService } from "../src/agent/agent-trigger.service";
 import { ActivityStampService } from "../src/crm/activity-stamp.service";
 import { ConversionService } from "../src/currency/conversion.service";
@@ -46,6 +50,7 @@ beforeAll(async () => {
 			email: `${ownerId}@example.test`,
 		},
 	});
+	await ensureTestMember(ownerId);
 	const company = await db.company.create({
 		data: { name: "Event Test Company", domain },
 		select: { id: true },

@@ -36,6 +36,24 @@ export class EnvironmentVariables {
 	})
 	DATABASE_URL!: string;
 
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	DATABASE_POOL_MAX?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	DATABASE_POOL_IDLE_TIMEOUT_MS?: number;
+
+	@IsOptional()
+	@Type(() => Number)
+	@IsInt()
+	@Min(1)
+	DATABASE_POOL_CONNECT_TIMEOUT_MS?: number;
+
 	@IsString()
 	@MinLength(32, {
 		message:

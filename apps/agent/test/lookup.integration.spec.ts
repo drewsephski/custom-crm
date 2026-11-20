@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
-import { TEST_ORGANIZATION, testStageIds } from "@crm/db/testing";
+import {
+	ensureTestMember,
+	TEST_ORGANIZATION,
+	testStageIds,
+} from "@crm/db/testing";
 import { listDeals, searchCrm } from "../agent/lib/lookup";
 
 const stages = await testStageIds(TEST_ORGANIZATION.id);
@@ -30,6 +34,7 @@ beforeAll(async () => {
 		},
 		select: { id: true },
 	});
+	await ensureTestMember(user.id);
 
 	const northwind = await db.company.create({
 		data: {

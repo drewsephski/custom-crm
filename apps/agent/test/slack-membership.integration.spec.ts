@@ -37,16 +37,17 @@ async function connect() {
 		},
 		update: {},
 	});
-	await db.account.upsert({
-		where: { id: ACCOUNT_ID },
-		create: {
-			id: ACCOUNT_ID,
-			accountId: "T-JOIN-SPEC",
-			providerId: "slack",
-			userId: USER_ID,
-			accessToken: "xoxb-join-spec",
-		},
-		update: { accessToken: "xoxb-join-spec" },
+	const connection = {
+		teamId: "T-JOIN-SPEC",
+		botToken: "xoxb-join-spec",
+		botScopes: "chat:write",
+		installerSlackUserId: ACCOUNT_ID,
+		installedById: USER_ID,
+	};
+	await db.slackConnection.upsert({
+		where: { organizationId: TEST_ORGANIZATION.id },
+		create: { organizationId: TEST_ORGANIZATION.id, ...connection },
+		update: connection,
 	});
 }
 
@@ -99,7 +100,7 @@ afterEach(async () => {
 	await db.agentTask.deleteMany({
 		where: { kind: INVENTORY_KIND, id: { notIn: inventoryTaskIds } },
 	});
-	await db.account.deleteMany({ where: { id: ACCOUNT_ID } });
+	await db.slackConnection.deleteMany({});
 	await db.user.deleteMany({ where: { id: USER_ID } });
 });
 

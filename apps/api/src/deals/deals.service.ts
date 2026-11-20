@@ -362,6 +362,7 @@ export class DealsService {
 
 	async create(input: DealCreateInput) {
 		const now = new Date();
+		await requireOwner(this.db, input.ownerId);
 
 		const currency = normalizeCurrency(
 			input.currency ?? (await this.conversion.reportingCurrency()),
@@ -430,6 +431,7 @@ export class DealsService {
 
 	async update(id: string, input: DealUpdateInput) {
 		const data: Prisma.DealUpdateInput = {};
+		await requireOwner(this.db, input.ownerId ?? null);
 
 		if (input.name !== undefined) data.name = input.name.trim();
 		if (input.description !== undefined) {

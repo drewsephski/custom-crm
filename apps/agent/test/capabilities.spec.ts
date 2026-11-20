@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+	bootLines,
 	CONTEXT_DEV,
 	CONTEXT_DEV_PEOPLE,
+	CONTEXT_DEV_SEARCH,
 	CONTEXT_DEV_SOURCE,
 	capabilitiesFrom,
 	enabled,
@@ -106,6 +108,21 @@ describe("reading a person comes from the same Context key", () => {
 	});
 });
 
+describe("web search comes from the same Context key", () => {
+	const webSearch = (stored: string | null) =>
+		capabilitiesFrom(stored).find((c) => c.id === CONTEXT_DEV_SEARCH);
+
+	it("is on when a key is stored and off when it is not", () => {
+		expect(webSearch("ctx")?.enabled).toBe(true);
+		expect(webSearch(null)?.enabled).toBe(false);
+	});
+
+	it("does not turn on Perplexity", async () => {
+		expect(webSearch("ctx")?.enabled).toBe(true);
+		expect(await enabled("PERPLEXITY_API_KEY")).toBe(false);
+	});
+});
+
 describe("the unavailable result", () => {
 	it("says retrying will not help", () => {
 		const result = unavailable(CONTEXT_DEV_SOURCE);
@@ -150,6 +167,26 @@ describe("the capability briefing", () => {
 
 		expect(markdownFor(capabilitiesFrom("ctx"))).not.toContain(
 			"Not configured here",
+		);
+	});
+});
+
+describe("the boot log", () => {
+	it("counts the workspaces that saved a Context key", () => {
+		const lines = bootLines(1, 2);
+
+		expect(lines).toContain(
+			"[agent] on   Company brand data (Settings → General, 1 of 2 workspaces)",
+		);
+		expect(lines).toContain(
+			"[agent] on   LinkedIn (Settings → General, 1 of 2 workspaces)",
+		);
+		expect(lines).toContain("[agent] off  Web research (PERPLEXITY_API_KEY)");
+	});
+
+	it("reports the Context sources off when no workspace saved a key", () => {
+		expect(bootLines(0, 2)).toContain(
+			"[agent] off  Company brand data (Settings → General, 0 of 2 workspaces)",
 		);
 	});
 });

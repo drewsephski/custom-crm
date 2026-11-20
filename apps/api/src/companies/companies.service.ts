@@ -317,6 +317,7 @@ export class CompaniesService {
 
 	async create(input: CompanyCreateInput) {
 		const domain = normalizeDomain(input.domain);
+		await requireOwner(this.db, input.ownerId ?? null);
 
 		const company = await this.agent.withCrmEvents(async (tx, emit) => {
 			if (domain) {
@@ -485,6 +486,7 @@ export class CompaniesService {
 
 	async update(id: string, input: CompanyUpdateInput) {
 		const data: Prisma.CompanyUpdateInput = {};
+		await requireOwner(this.db, input.ownerId ?? null);
 
 		if (input.name !== undefined) data.name = input.name.trim();
 		if (input.website !== undefined) data.website = blankToNull(input.website);

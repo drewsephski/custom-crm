@@ -8,6 +8,7 @@ import {
 	isWorkspaceRole,
 	membershipOf,
 	toWorkspaceRole,
+	WORKSPACE_ROLES,
 	type WorkspaceRole,
 } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
@@ -461,6 +462,13 @@ export class WorkspaceService {
 					await this.assertAnotherOwner(tx, organizationId);
 				}
 
+				await this.releaseAssignments(tx, organizationId, {
+					leaverId: target.userId,
+					heirId: leaving
+						? await this.heirOf(tx, organizationId, target.userId)
+						: userId,
+				});
+
 				await tx.member.delete({ where: { id: target.id } });
 				await tx.session.updateMany({
 					where: {
@@ -749,6 +757,49 @@ export class WorkspaceService {
 			}),
 		);
 		return user?.emailVerified ? { email: user.email } : null;
+	}
+
+	private async heirOf(
+		tx: Prisma.TransactionClient,
+		organizationId: string,
+		leaverId: string,
+	): Promise<string> {
+		const members = await tx.member.findMany({
+			where: { organizationId, userId: { not: leaverId } },
+			orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+			select: { userId: true, role: true },
+		});
+		const [heir] = members.toSorted(
+			(left, right) =>
+				WORKSPACE_ROLES.indexOf(toWorkspaceRole(left.role)) -
+				WORKSPACE_ROLES.indexOf(toWorkspaceRole(right.role)),
+		);
+		if (!heir) {
+			throw new ForbiddenException(
+				"The workspace needs another member to take over these deals first.",
+			);
+		}
+		return heir.userId;
+	}
+
+	private async releaseAssignments(
+		tx: Prisma.TransactionClient,
+		organizationId: string,
+		people: { leaverId: string; heirId: string },
+	): Promise<void> {
+		const owned = { organizationId, ownerId: people.leaverId };
+		await tx.deal.updateMany({
+			where: owned,
+			data: { ownerId: people.heirId },
+		});
+		await tx.contact.updateMany({ where: owned, data: { ownerId: null } });
+		await tx.company.updateMany({ where: owned, data: { ownerId: null } });
+		await tx.mailboxSync.deleteMany({
+			where: { organizationId, userId: people.leaverId },
+		});
+		await tx.slackMemberMatch.deleteMany({
+			where: { organizationId, crmUserId: people.leaverId },
+		});
 	}
 
 	private async assertAnotherOwner(

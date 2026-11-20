@@ -1,3 +1,5 @@
+import { MCP_AUTH } from "@crm/auth/mcp-config";
+import { isOrganizationId } from "@crm/db/tenancy";
 import {
 	Controller,
 	ForbiddenException,
@@ -31,6 +33,7 @@ export class McpInternalController {
 	async token(
 		@Param("connectionId") connectionId: string,
 		@Headers("authorization") authorization?: string,
+		@Headers(MCP_AUTH.token.organizationHeader) organizationId?: string,
 	) {
 		if (!this.secret) {
 			this.logger.error({ message: "MCP token brokering is not configured." });
@@ -42,7 +45,13 @@ export class McpInternalController {
 			throw new ForbiddenException();
 		}
 
-		return this.connections.token(connectionId);
+		if (!organizationId || !isOrganizationId(organizationId)) {
+			throw new ForbiddenException(
+				"An MCP token request must name its workspace.",
+			);
+		}
+
+		return this.connections.token(connectionId, organizationId);
 	}
 }
 

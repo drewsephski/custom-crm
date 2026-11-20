@@ -43,9 +43,10 @@ undo it.
 ## Connecting Slack is refused at the OAuth endpoints, not in the UI
 
 Connecting is the same decision as disconnecting, because `replaceSlackConnection`
-deletes every other Slack account row: a second person connecting *replaces* the
-workspace's Slack, and every deployed agent then reads from and posts to whichever
-Slack they installed. Hiding the button is not enough — `authClient.linkSocial`
+overwrites the workspace's one `slackConnection` row: a second person connecting
+*replaces* the workspace's Slack, and every deployed agent then reads from and
+posts to whichever Slack they installed. It touches only the current workspace.
+Another agency the same person administers keeps its own connection. Hiding the button is not enough — `authClient.linkSocial`
 is one POST.
 
 `slackConnectGuard` (`packages/auth/src/slack-connect.ts`) is Better Auth's
@@ -54,7 +55,7 @@ covers all three doors: `/link-social`, `/sign-in/social` (Slack is a connection
 never a sign-in method, and that endpoint needs no session) and
 `/callback/slack`. The callback is the one that matters — refusing there
 happens **before the code is exchanged**, so a refused attempt writes no
-`SlackWorkspaceGrant` user token and deletes no bot token. Google and Microsoft
+`SlackWorkspaceGrant` user token and replaces no bot token. Google and Microsoft
 sign in on different paths and never reach the guard.
 
 `slackOAuthCallback` redirects the registered `/oauth2/callback/slack` URL to the guarded callback.
@@ -98,10 +99,29 @@ uses to act as the person who connected Slack.
 - **Public channel** — the bot self-joins with `conversations.join`. Bot token only.
 - **Private channel** — only a user token can invite the bot. Both tokens.
 
-The bot token lives on `Account`. The user token lives on `SlackWorkspaceGrant`,
-keyed by Slack team id, because the grant belongs to the workspace and not to the
-person who clicked Connect. `packages/auth/src/slack-grant.ts` writes it, and
-`apps/agent/agent/lib/slack-connection.ts` is the only place that reads either.
+The bot token lives on `SlackConnection`, one row per workspace, and the user token
+lives on `SlackWorkspaceGrant`, keyed by Slack team id. Both are tenant-scoped,
+because the connection belongs to the workspace and not to the person who clicked
+Connect. Demoting or removing that person changes nothing: no lookup asks who
+installed Slack or what their role is now. `installedById` only records who did it.
+`packages/auth/src/slack-grant.ts` writes both, and
+`apps/agent/agent/lib/slack-connection.ts` is the only place in the agent that
+reads either.
+
+The OAuth handoff matches the token exchange to the account hook by the SHA-256 of
+the bot token and the installer's Slack user id. A Slack Enterprise Grid user has
+one id across teams, so the installer id alone mixed up two installs that ran at
+the same time. After the hook copies the bot token into `SlackConnection`, it clears
+the token on the person's `account` row. Reconnecting to a different Slack team
+also clears the cached channels and people matches of the old team.
+
+`20261120091000_slack_workspace_connection` moves an existing token only when
+nothing is ambiguous: the workspace has a `SlackWorkspaceGrant` for the team, and
+the token's holder is an owner or admin of exactly one workspace. Run
+`bun scripts/backfill-slack-connections.ts` in `apps/api` for the rest. It asks
+Slack's `auth.test` which team each remaining token belongs to, prints what it
+would do, and writes only with `--apply`. A token it cannot place stays put, and
+that workspace reconnects Slack.
 
 A missing user grant is a capability that is off, not an error. The connection
 page names it, and the private-channel row falls back to asking a human.

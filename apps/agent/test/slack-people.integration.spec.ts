@@ -40,21 +40,22 @@ async function connect() {
 		},
 		update: {},
 	});
-	await db.account.upsert({
-		where: { id: ACCOUNT_ID },
-		create: {
-			id: ACCOUNT_ID,
-			accountId: "T-SPEC",
-			providerId: "slack",
-			userId: USER_ID,
-			accessToken: "xoxb-spec",
-		},
-		update: { accessToken: "xoxb-spec" },
+	const connection = {
+		teamId: "T-SPEC",
+		botToken: "xoxb-spec",
+		botScopes: "chat:write",
+		installerSlackUserId: ACCOUNT_ID,
+		installedById: USER_ID,
+	};
+	await db.slackConnection.upsert({
+		where: { organizationId: TEST_ORGANIZATION.id },
+		create: { organizationId: TEST_ORGANIZATION.id, ...connection },
+		update: connection,
 	});
 }
 
 async function disconnect() {
-	await db.account.deleteMany({ where: { providerId: "slack" } });
+	await db.slackConnection.deleteMany({});
 	await db.slackChannel.deleteMany({ where: { id: { startsWith: PREFIX } } });
 }
 
@@ -69,7 +70,7 @@ beforeEach(async () => {
 afterEach(async () => {
 	globalThis.fetch = realFetch;
 	await db.slackChannel.deleteMany({ where: { id: { startsWith: PREFIX } } });
-	await db.account.deleteMany({ where: { id: ACCOUNT_ID } });
+	await db.slackConnection.deleteMany({});
 	await db.user.deleteMany({ where: { id: USER_ID } });
 	for (const row of restore) {
 		await db.slackChannel.updateMany({

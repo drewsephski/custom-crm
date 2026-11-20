@@ -123,29 +123,6 @@ export function memberOfWorkspace(
 	return { members: { some: { organizationId } } };
 }
 
-export function connectionManagerOfWorkspace(
-	organizationId: string = requireOrganizationId(),
-) {
-	return {
-		members: {
-			some: {
-				organizationId,
-				role: { in: WORKSPACE_ROLES.filter(canManageConnections) },
-			},
-		},
-	};
-}
-
-export function slackAccountOfWorkspace(
-	organizationId: string = requireOrganizationId(),
-) {
-	return {
-		providerId: "slack",
-		accessToken: { not: null },
-		user: connectionManagerOfWorkspace(organizationId),
-	};
-}
-
 export type WorkspaceMemberReader = Pick<Db, "member">;
 
 export type Membership = {
@@ -177,6 +154,29 @@ export async function workspaceRoleOf(
 	organizationId: string = requireOrganizationId(),
 ): Promise<WorkspaceRole | null> {
 	return (await membershipOf(userId, organizationId, client))?.role ?? null;
+}
+
+export async function workspaceAuthor(
+	preferredUserId: string | null = null,
+	client: WorkspaceMemberReader = db,
+	organizationId: string = requireOrganizationId(),
+): Promise<string | null> {
+	const members = await client.member.findMany({
+		where: { organizationId },
+		orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+		select: { userId: true, role: true },
+	});
+
+	if (preferredUserId && members.some((m) => m.userId === preferredUserId)) {
+		return preferredUserId;
+	}
+
+	const [first] = [...members].sort(
+		(left, right) =>
+			WORKSPACE_ROLES.indexOf(toWorkspaceRole(left.role)) -
+			WORKSPACE_ROLES.indexOf(toWorkspaceRole(right.role)),
+	);
+	return first?.userId ?? null;
 }
 
 export async function defaultOrganizationFor(

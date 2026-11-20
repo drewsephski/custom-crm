@@ -27,6 +27,13 @@ button quietly missing. **`passThroughEnv`, never `env`** — a secret in `env` 
 cache key, which means a cache miss on every rotation and the secret in the cache
 metadata. The root file's comment has the whole account.
 
+## Database pool
+
+`DATABASE_POOL_MAX` (default 10), `DATABASE_POOL_IDLE_TIMEOUT_MS` (30000) and
+`DATABASE_POOL_CONNECT_TIMEOUT_MS` (10000) size the `pg` pool of each process,
+in `packages/db/src/pool-config.ts`. On serverless every instance has its own pool,
+so keep instances times the maximum under the database's connection limit.
+
 ## Required
 
 `DATABASE_URL`, `BETTER_AUTH_SECRET`. Everything else has a localhost default or is
@@ -49,7 +56,8 @@ with none, the sign-in page says so by name rather than rendering nothing.
 **`ALLOWED_SIGN_IN`** — optional. Empty means self-service sign-up: anyone may
 register, and workspace membership decides what they see (`docs/tenancy.md`). Set it
 to restrict an install to whole domains or single addresses. It is also read by the
-sync's "which side is external" decision, together with the `User` table.
+sync's "which side is external" decision, together with the members of the current
+workspace.
 `packages/auth/src/workspace.ts`.
 
 **`ANTHROPIC_API_KEY`** — optional, server-side only. The agent and the AI setup
@@ -147,9 +155,13 @@ excluded — recognising our URL for the image optimizer needs no token.
 in `AppSetting`, is asked for at `/onboarding/research`, and changes on Settings →
 General — an admin who cannot redeploy cannot set a variable.
 
-- **It buys two places to look, not one.** Company brand data by domain, and a person
-  read back from a LinkedIn URL already on their record. Both capabilities in
-  `agent/lib/capabilities.ts` turn on and off with this one key.
+- **It buys three places to look, not one.** Company brand data by domain, a person
+  read back from a LinkedIn URL already on their record, and open-web search. All
+  three capabilities in `agent/lib/capabilities.ts` turn on and off with this one key.
+  `research_person` asks Perplexity when `PERPLEXITY_API_KEY` is set. Without it, the
+  tool runs a Context.dev web search and hands the model each result's URL and page
+  text to read and cite. The result counts and excerpt length are in
+  `agent/lib/context-config.ts`.
 - **An install that had the variable is asked again**: no migration, no fallback, and
   **the gate cannot be dismissed**.
 - **Nothing is lost while waiting.** A keyless `brand` task settles `SKIPPED` *before*

@@ -1,3 +1,4 @@
+import { MCP_AUTH } from "@crm/auth/mcp-config";
 import { z } from "zod";
 import { MCP } from "./mcp-config";
 
@@ -6,7 +7,10 @@ const tokenReply = z.object({
 	expiresAt: z.number().int().positive().nullable(),
 });
 
-export async function mcpConnectionToken(connectionId: string) {
+export async function mcpConnectionToken(
+	connectionId: string,
+	organizationId: string,
+) {
 	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
 	if (!secret) throw new Error("MCP token brokering is not configured.");
 	const baseUrl = process.env.API_URL?.trim() || MCP.api.baseUrl;
@@ -15,7 +19,10 @@ export async function mcpConnectionToken(connectionId: string) {
 		baseUrl,
 	);
 	const response = await fetch(url, {
-		headers: { authorization: `Bearer ${secret}` },
+		headers: {
+			authorization: `Bearer ${secret}`,
+			[MCP_AUTH.token.organizationHeader]: organizationId,
+		},
 		signal: AbortSignal.timeout(MCP.api.timeoutMs),
 	});
 	if (!response.ok)

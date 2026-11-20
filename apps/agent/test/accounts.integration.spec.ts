@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ActivityType, db, EmailDirection } from "@crm/db";
 import { stageSnapshot } from "@crm/db/pipeline";
-import { ensureTestPipeline, TEST_ORGANIZATION } from "@crm/db/testing";
+import {
+	ensureTestMember,
+	ensureTestPipeline,
+	TEST_ORGANIZATION,
+} from "@crm/db/testing";
 import { readCompanyHistory, readDealHistory } from "../agent/lib/accounts";
 
 const pipeline = await ensureTestPipeline(TEST_ORGANIZATION.id);
@@ -36,6 +40,7 @@ beforeAll(async () => {
 		},
 		select: { id: true },
 	});
+	await ensureTestMember(user.id);
 	userId = user.id;
 
 	const company = await db.company.create({

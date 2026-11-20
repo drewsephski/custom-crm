@@ -7,6 +7,7 @@ import {
 	gtmSnippet,
 	gtmTag,
 	hostAllowed,
+	isLegacySiteId,
 	isSiteId,
 	loaderUrl,
 	matchedHost,
@@ -40,9 +41,26 @@ describe("a site id", () => {
 	});
 
 	test("rejects anything else", () => {
-		for (const value of ["cmp_", "cmp_ZZZZZZZZ", "8f3ad91c", "", null]) {
+		for (const value of [
+			"cmp_",
+			"cmp_ZZZZZZZZ",
+			"8f3ad91c",
+			"",
+			null,
+			"cmp_0123456789abcdef",
+			"cmp_0123456789abcdef0123456789ABCDEF",
+		]) {
 			expect(isSiteId(value)).toBe(false);
 		}
+	});
+
+	test("carries 128 random bits, and an old 32-bit id keeps working", () => {
+		const minted = mintSiteId();
+		expect(minted).toMatch(/^cmp_[0-9a-f]{32}$/);
+		expect(isLegacySiteId(minted)).toBe(false);
+		expect(new Set(Array.from({ length: 1_000 }, mintSiteId)).size).toBe(1_000);
+		expect(isSiteId("cmp_6e9356c9")).toBe(true);
+		expect(isLegacySiteId("cmp_6e9356c9")).toBe(true);
 	});
 });
 

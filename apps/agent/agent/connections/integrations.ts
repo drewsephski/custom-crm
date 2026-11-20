@@ -18,10 +18,13 @@ export default defineDynamic({
 			}
 			const userId = attribute(ctx, "userId");
 			if (!userId) return null;
-			const connections = await inSessionTenant(ctx, () =>
-				loadChatMcpConnections(),
+			return inSessionTenant(ctx, async () =>
+				buildChatMcpConnections(
+					vendors,
+					await loadChatMcpConnections(),
+					userId,
+				),
 			);
-			return buildChatMcpConnections(vendors, connections, userId);
 		},
 	},
 });

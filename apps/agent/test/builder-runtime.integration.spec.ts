@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { db } from "@crm/db";
+import { readBuilderEvent } from "../agent/lib/builder-event-storage";
 import { persistBuilderInputRequest } from "../agent/lib/builder-input";
 import {
 	saveBuilderDraft,
@@ -107,14 +108,21 @@ describe("builder persistence", () => {
 			continuationToken: builderToken(conversationId),
 			pendingInputRequests: [request],
 		});
-		expect(
-			await db.agentEvent.findUnique({
-				where: {
-					id: `builder-input:${conversationId}:${event.turnId}:${event.sequence}:${event.stepIndex}`,
-				},
-				select: { conversationId: true, type: true, data: true },
-			}),
-		).toEqual({
+		const eventId = `builder-input:${conversationId}:${event.turnId}:${event.sequence}:${event.stepIndex}`;
+		const stored = await db.agentEvent.findUniqueOrThrow({
+			where: { id: eventId },
+			select: {
+				conversationId: true,
+				type: true,
+				data: true,
+				encryptedData: true,
+			},
+		});
+		expect({
+			conversationId: stored.conversationId,
+			type: stored.type,
+			data: readBuilderEvent(stored, { conversationId, eventId }),
+		}).toEqual({
 			conversationId,
 			type: "input.requested",
 			data: event,

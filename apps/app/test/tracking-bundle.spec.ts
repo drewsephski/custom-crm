@@ -40,7 +40,7 @@ describe("the tracking bundle stays inside its budget", () => {
 	});
 
 	test("the loader only ever injects a site it was given", () => {
-		expect(LOADER_SOURCE).toContain("cmp_[0-9a-f]{8}");
+		expect(LOADER_SOURCE).toContain("cmp_([0-9a-f]{8}|[0-9a-f]{32})");
 		expect(LOADER_SOURCE).toContain("document.currentScript");
 	});
 });
@@ -97,12 +97,29 @@ describe("the loader finds the site id however the page was built", () => {
 		).toEqual(["https://crm.example.com/t/cmp_8f3ad91c.js"]);
 	});
 
+	test("accepts a long site id and keeps a legacy one working", () => {
+		const long = "cmp_0123456789abcdef0123456789abcdef";
+		expect(
+			inject({ src: "https://crm.example.com/t/crm.js", "data-site": long }),
+		).toEqual([`https://crm.example.com/t/${long}.js`]);
+		expect(
+			inject({ src: "https://crm.example.com/t/crm.js?site=cmp_8f3ad91c" }),
+		).toEqual(["https://crm.example.com/t/cmp_8f3ad91c.js"]);
+	});
+
 	test("injects nothing when neither carries a site", () => {
 		expect(inject({ src: "https://crm.example.com/t/crm.js" })).toEqual([]);
 	});
 
 	test("refuses a site id from the URL that is not one", () => {
-		for (const site of ["../config", "cmp_ZZZZZZZZ", "cmp_", ""]) {
+		for (const site of [
+			"../config",
+			"cmp_ZZZZZZZZ",
+			"cmp_",
+			"",
+			"cmp_0123456789abcdef",
+			"cmp_0123456789abcdef0123456789abcdef00",
+		]) {
 			expect(
 				inject({
 					src: `https://crm.example.com/t/crm.js?site=${encodeURIComponent(site)}`,

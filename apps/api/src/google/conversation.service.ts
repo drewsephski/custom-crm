@@ -1,3 +1,4 @@
+import { memberOfWorkspace } from "@crm/auth/organization";
 import type { Db, Prisma } from "@crm/db";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
@@ -88,7 +89,10 @@ export class ConversationService {
 				select: { email: true, imageUrl: true },
 			}),
 			this.db.user.findMany({
-				where: { email: { in: emails, mode: "insensitive" } },
+				where: {
+					email: { in: emails, mode: "insensitive" },
+					...memberOfWorkspace(),
+				},
 				select: { email: true, image: true },
 			}),
 		]);

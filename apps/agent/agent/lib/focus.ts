@@ -1,5 +1,6 @@
 import { bumpCounter, COUNTERS } from "@crm/telemetry";
 import { defineState } from "eve/context";
+import { FOCUS } from "./focus-config";
 
 export const focus = defineState("crm.focus", () => ({
 	contactId: null as string | null,
@@ -7,7 +8,7 @@ export const focus = defineState("crm.focus", () => ({
 	sessionId: null as string | null,
 	taskKind: null as string | null,
 	spent: 0,
-	budget: 4,
+	budget: FOCUS.defaultBudget as number,
 	exhausted: false,
 }));
 
@@ -45,10 +46,19 @@ export function focusOn(input: {
 	}));
 }
 
+export function budgetAllows(
+	spent: number,
+	units: number,
+	budget: number,
+	enforce: boolean = FOCUS.enforceBudget,
+): boolean {
+	return !enforce || spent + units <= budget;
+}
+
 export function spend(units = 1): { ok: true } | { ok: false; reason: string } {
 	const { spent, budget, exhausted } = focus.get();
 
-	if (spent + units > budget) {
+	if (!budgetAllows(spent, units, budget)) {
 		if (!exhausted) {
 			focus.update((current) => ({ ...current, exhausted: true }));
 			void bumpCounter(COUNTERS.budgetExhausted);

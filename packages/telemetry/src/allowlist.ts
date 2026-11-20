@@ -114,10 +114,12 @@ export function permitted(
 }
 
 export const AGENT_TOOLS = [
+	"add_to_crm",
 	"agent",
 	"archive_field",
 	"enrich_company",
 	"fetch_contact_photo",
+	"find_linkedin_profile",
 	"find_contact_socials",
 	"get_contact_work_history",
 	"get_linkedin_profile",
@@ -126,10 +128,10 @@ export const AGENT_TOOLS = [
 	"list_fields",
 	"list_outstanding_work",
 	"manage_fields",
-	"mcp",
 	"read_company_history",
 	"read_crm_history",
 	"read_deal_history",
+	"read_linkedin_profile",
 	"record_fact",
 	"record_job_change",
 	"request_connection",

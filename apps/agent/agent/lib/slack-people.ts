@@ -179,19 +179,13 @@ export async function persistSlackChannels(
 	];
 
 	return db.$transaction(async (tx) => {
-		const [account] = await tx.$queryRaw<Array<{ id: string }>>`
-			SELECT a.id
-			FROM "account" AS a
-			WHERE a."providerId" = 'slack' AND a."accessToken" IS NOT NULL
-				AND EXISTS (
-					SELECT 1 FROM "member" AS m
-					WHERE m."userId" = a."userId" AND m."organizationId" = ${requireOrganizationId()}
-				)
-			ORDER BY a."updatedAt" DESC
-			LIMIT 1
+		const [connection] = await tx.$queryRaw<Array<{ organizationId: string }>>`
+			SELECT "organizationId"
+			FROM "slackConnection"
+			WHERE "organizationId" = ${requireOrganizationId()}
 			FOR UPDATE
 		`;
-		if (!account) return 0;
+		if (!connection) return 0;
 
 		const ids = available.map((channel) => channel.id);
 		await tx.slackChannel.updateMany({

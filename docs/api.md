@@ -189,9 +189,16 @@ Two rules follow for the serverless build:
 ## Not every address on a thread is a person
 
 `externalParticipants` (`mailbox/participants.ts`) is the one gate, discarding **us**
-(allow-list domains, `User` table), **rep decisions** (`SuppressedContact`,
+(allow-list domains, and the addresses and work domains of the current workspace's
+members only), **rep decisions** (`SuppressedContact`,
 `SuppressedDomain`), and **addresses no human reads**.
 
+- **"Us" is per workspace.** `MailboxMatchService.internalIdentity` reads members of
+  the current workspace through `memberOfWorkspace`. A person who works at another
+  agency on the same install is a prospect here, and so is their domain. An
+  automated note credits the record owner when they are still a member, else the
+  oldest owner, admin, then member (`workspaceAuthor`). It never credits a user of
+  another agency.
 - **`isMachineDomain` (`companies/domain.ts`) sits beside `FREE_EMAIL_DOMAINS`**;
   `domainFromEmail` returns null for both, and `companyForEmail` is the only path from
   address to company — so a caller ignorant of the rule still cannot create one.

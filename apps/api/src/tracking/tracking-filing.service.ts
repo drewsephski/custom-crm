@@ -1,3 +1,4 @@
+import { workspaceAuthor } from "@crm/auth/organization";
 import { workspaceDomains } from "@crm/auth/workspace";
 import { ActivityType, type Db, Prisma, RecordSource } from "@crm/db";
 import type { Touch } from "@crm/db/attribution";
@@ -227,18 +228,7 @@ export class TrackingFilingService {
 			select: { ownerId: true },
 		});
 
-		if (contact?.ownerId) return contact.ownerId;
-
-		const organizationId = requireOrganizationId();
-		const owner = await runAsSystem("pick who files a form submission", () =>
-			this.db.member.findFirst({
-				where: { organizationId },
-				orderBy: [{ role: "desc" }, { createdAt: "asc" }],
-				select: { userId: true },
-			}),
-		);
-
-		return owner?.userId ?? null;
+		return workspaceAuthor(contact?.ownerId ?? null, this.db);
 	}
 
 	private async skip(

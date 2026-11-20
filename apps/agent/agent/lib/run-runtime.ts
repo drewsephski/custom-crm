@@ -781,6 +781,20 @@ export function runReportedNoActionNeeded(
 	return noActionResult.parse(result).noActionNeeded !== null;
 }
 
+export async function finishStagedRun(runId: string): Promise<boolean> {
+	const run = await db.agentRun.findUnique({
+		where: { id: runId },
+		select: { status: true, summary: true, result: true },
+	});
+	if (run?.status !== "RUNNING" || run.summary === null) return false;
+
+	await finishRun(runId, {
+		summary: run.summary,
+		result: runResultOf(run.result),
+	});
+	return true;
+}
+
 export async function finishRun(
 	runId: string,
 	input: { summary: string; result?: RunResult | null },

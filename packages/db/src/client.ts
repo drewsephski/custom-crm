@@ -3,6 +3,7 @@ import "@crm/env/load";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { type Prisma, PrismaClient } from "./generated/prisma/client";
 import { isolateBatchesByScope, scopedAdapterFactory } from "./scoped-adapter";
+import { createTenantPool } from "./tenant-pool";
 
 const connectionString =
 	process.env.NODE_ENV === "test" ? testDatabase() : liveDatabase();
@@ -101,7 +102,11 @@ const logDefinitions: Prisma.LogDefinition[] = [
 
 const createPrismaClient = () => {
 	const client = new PrismaClient({
-		adapter: scopedAdapterFactory(new PrismaPg({ connectionString })),
+		adapter: scopedAdapterFactory(
+			new PrismaPg(createTenantPool(connectionString), {
+				disposeExternalPool: true,
+			}),
+		),
 		log: logDefinitions,
 	});
 

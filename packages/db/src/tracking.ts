@@ -83,11 +83,19 @@ export function trackingReady(
 	return !limitToDomains || domainCount > 0;
 }
 
+export const SITE_ID_BYTES = 16;
+
 export function mintSiteId(): string {
-	return `${SITE_ID_PREFIX}${randomBytes(4).toString("hex")}`;
+	return `${SITE_ID_PREFIX}${randomBytes(SITE_ID_BYTES).toString("hex")}`;
 }
 
-const SITE_ID_SHAPE = /^cmp_[0-9a-f]{8}$/;
+const SITE_ID_SHAPE = /^cmp_(?:[0-9a-f]{8}|[0-9a-f]{32})$/;
+
+const LEGACY_SITE_ID_SHAPE = /^cmp_[0-9a-f]{8}$/;
+
+export function isLegacySiteId(value: string | null | undefined): boolean {
+	return LEGACY_SITE_ID_SHAPE.test(value ?? "");
+}
 
 export function isSiteId(value: string | null | undefined): value is string {
 	return SITE_ID_SHAPE.test(value ?? "");

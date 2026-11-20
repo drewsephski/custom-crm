@@ -264,6 +264,7 @@ export class ContactsService {
 
 	async create(input: ContactCreateInput) {
 		const email = normalizeEmail(input.email ?? "");
+		await requireOwner(this.db, input.ownerId ?? null);
 
 		if (email) {
 			const existing = await this.db.contact.findFirst({
@@ -476,6 +477,7 @@ export class ContactsService {
 
 	async update(id: string, input: ContactUpdateInput) {
 		const data: Prisma.ContactUpdateInput = {};
+		await requireOwner(this.db, input.ownerId ?? null);
 
 		if (input.firstName !== undefined) data.firstName = input.firstName.trim();
 		if (input.lastName !== undefined)
