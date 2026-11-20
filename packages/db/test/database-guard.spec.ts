@@ -131,10 +131,21 @@ describe("guardDevelopmentCommand", () => {
 describe("guardDeployCommand", () => {
 	it("deploys to a development branch", () => {
 		const [decision] = guardDeployCommand([
-			file({ DATABASE_URL: DEV_POOLED, NEON_BRANCH: "development" }),
+			file({
+				DATABASE_URL: DEV_POOLED,
+				NEON_BRANCH: "development",
+				DEV_DATABASE_HOSTS: DEV_HOST,
+			}),
 		]);
 
 		expect(decision).toMatchObject({ allowed: true, reason: "unprotected" });
+	});
+
+	it("refuses an unidentified remote deploy even with the development override", () => {
+		const [decision] = guardDeployCommand([
+			shell({ DATABASE_URL: DEV_POOLED, ALLOW_REMOTE_DB: "1" }),
+		]);
+		expect(decision).toMatchObject({ allowed: false, reason: "remote" });
 	});
 
 	it("refuses the production branch from a laptop", () => {

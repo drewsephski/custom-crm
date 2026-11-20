@@ -23,7 +23,9 @@ if (refused) {
 			"",
 			reason === "protected-branch"
 				? `  ${DATABASE_GUARD.branchVariable} is "${target.branch}", a protected Neon branch.`
-				: `  That host is listed in ${DATABASE_GUARD.protectedHostsVariable}.`,
+				: reason === "protected-host"
+					? `  That host is listed in ${DATABASE_GUARD.protectedHostsVariable}.`
+					: `  List the verified development host in ${DATABASE_GUARD.devHostsVariable}.`,
 			"  A release applies production migrations during the API build.",
 			"",
 			"  To apply them by hand, after a backup:",

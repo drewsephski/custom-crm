@@ -68,8 +68,7 @@ runs it before `db:migrate`, `db:push`, `db:reset`, `db:seed` and `dev`.
   and neither does listing the host in `DEV_DATABASE_HOSTS`.
 - A remote host that is not protected runs only when `DEV_DATABASE_HOSTS` names
   it, or with `ALLOW_REMOTE_DB=1`.
-- **`db:deploy` has its own check** (`scripts/require-deploy-target.ts`). It
-  applies migrations to a development target freely. It refuses a protected
+- **`db:deploy` has its own check** (`scripts/require-deploy-target.ts`). It allows local databases and hosts listed in `DEV_DATABASE_HOSTS`. It refuses a protected
   target unless `VERCEL_ENV` is `production` or `ALLOW_PRODUCTION_MIGRATE=1`
   confirms it.
 - The `production` branch is also marked protected in Neon.

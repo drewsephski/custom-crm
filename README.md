@@ -139,7 +139,7 @@ the install has a monthly ceiling. A request reserves credits before the provide
 called and settles with the amount the provider reports. Identical requests are
 deduplicated for cached brand and profile lookups within the current workspace, and a request
 that does not fit is refused with a plain message. Company brand and answer results include their sources, and a finding that differs from what a person typed becomes a suggestion to
-accept or dismiss. Status changes reach the browser through a live event stream.
+accept or dismiss. Neon Realtime signals changes. The record panel also polls the authenticated API.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
 a shell — the difference between a tool-caller and something that can keep a dossier,
@@ -408,7 +408,7 @@ redirect URIs. Set `CRON_SECRET` and let Vercel run the crons in
 `apps/api/vercel.json`, or set `CRON_TARGET_URL` and run `neon deploy` so the Neon
 `cron` function relays the same schedules. Use one of the two, never both.
 
-Set `RESEND_API_KEY`, `EMAIL_FROM` and `CONTEXT_DEV_API_KEY` on the API and the agent.
+Set `RESEND_API_KEY` and `EMAIL_FROM` on the API. Set `CONTEXT_DEV_API_KEY` on the agent.
 Leave `ALLOWED_SIGN_IN` empty for public sign-up.
 
 `apps/api/src/generated/server.ts` is committed and `build` must never regenerate it —

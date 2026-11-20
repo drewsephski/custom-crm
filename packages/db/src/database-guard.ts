@@ -130,7 +130,10 @@ export function guardDevelopmentCommand(
 
 export type DeployVerdict =
 	| { allowed: true; reason: "unprotected" | "release" | "confirmed" }
-	| { allowed: false; reason: "protected-host" | "protected-branch" };
+	| {
+			allowed: false;
+			reason: "protected-host" | "protected-branch" | "remote";
+	  };
 
 export type DeployDecision = DeployVerdict & { target: GuardTarget };
 
@@ -140,14 +143,16 @@ export function guardDeployCommand(sources: GuardSource[]): DeployDecision[] {
 		setting(sources, DATABASE_GUARD.allowProductionMigrateVariable) === "1";
 
 	return guardTargets(sources).map((target): DeployDecision => {
-		const protection = isLocalHost(target.host)
-			? null
-			: isProtectedTarget(target, sources);
-
-		if (!protection) return { allowed: true, reason: "unprotected", target };
+		const development = judge(target, sources);
+		if (development.allowed && development.reason !== "override") {
+			return { allowed: true, reason: "unprotected", target };
+		}
 		if (releasing) return { allowed: true, reason: "release", target };
 		if (confirmed) return { allowed: true, reason: "confirmed", target };
-
-		return { allowed: false, reason: protection, target };
+		return {
+			allowed: false,
+			reason: development.allowed ? "remote" : development.reason,
+			target,
+		};
 	});
 }

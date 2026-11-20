@@ -310,13 +310,9 @@ The private CRM chat (`builder` purpose, `CHAT` command) answers questions and m
 change the CRM in exactly one way: `add_to_crm`, when the user asks.
 
 - **Finding a person** starts with `find_linkedin_profile` (`lib/linkedin-find.ts`).
-  A web search index is fuzzy on names, so it searches LinkedIn only, adds the usual
-  vanity slugs (`first-last`, `firstlast`), reads at most
-  `CONTEXT.linkedinFind.maxProfiles` of them through Context.dev, and keeps only
-  profiles whose name matches. Each candidate says whether it works or worked at the
-  company the user named. `research_person` (Perplexity, or a Context.dev web search
-  when Perplexity is not set) is the fallback. A shared name is a question for the
-  user.
+  Context.dev People Search returns profile candidates. The agent reads up to
+  `CONTEXT.linkedinFind.maxProfiles` returned LinkedIn profiles and checks each name.
+  The result includes current and previous employers for review.
 - **`read_linkedin_profile`** reads a profile by URL or slug through Context.dev and
   needs no email, unlike `get_linkedin_profile`, which checks a profile against an
   address on a contact.
