@@ -22,6 +22,7 @@
 		"./images": "./src/images.ts",
 		"./idempotency": "./src/idempotency.ts",
 		"./json": "./src/json.ts",
+		"./research-budget": "./src/research-budget.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
 		"./settings-constants": "./src/settings-constants.ts",
