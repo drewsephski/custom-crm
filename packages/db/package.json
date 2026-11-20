@@ -26,7 +26,6 @@
 		"./research-budget": "./src/research-budget.ts",
 		"./safe-fetch": "./src/safe-fetch.ts",
 		"./settings": "./src/settings.ts",
-		"./settings-constants": "./src/settings-constants.ts",
 		"./slack-inventory": "./src/slack-inventory.ts",
 		"./tenancy": "./src/tenancy.ts",
 		"./testing": "./src/testing.ts",

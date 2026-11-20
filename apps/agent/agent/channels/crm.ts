@@ -7,7 +7,6 @@ import { eveTurnFailure } from "@crm/validation/eve-stream";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
 import { persistBuilderInputRequest } from "../lib/builder-input";
-import { verifyKey } from "../lib/context-dev";
 import {
 	type AgentInputResponseDelivery,
 	builderIdFromToken,
@@ -60,10 +59,6 @@ const cancelRunRequest = z.object({ runId: identifier }).catch({ runId: null });
 const createChannelRequest = schemas.slack.createPayload.extend({
 	organizationId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
 });
-
-const verifyKeyRequest = z
-	.object({ apiKey: identifier })
-	.catch({ apiKey: null });
 
 const receiveTarget = z
 	.object({
@@ -262,25 +257,6 @@ export default defineChannel({
 			return "error" in outcome
 				? Response.json({ error: outcome.error }, { status: 422 })
 				: Response.json({ channel: outcome });
-		}),
-
-		POST("/internal/crm/verify-key", async (request) => {
-			if (!authorised(request)) {
-				return new Response("Unauthorized", { status: 401 });
-			}
-
-			const { apiKey } = verifyKeyRequest.parse(
-				await request.json().catch(() => null),
-			);
-
-			if (!apiKey) {
-				return Response.json(
-					{ outcome: "invalid", reason: "No API key was sent." },
-					{ status: 400 },
-				);
-			}
-
-			return Response.json(await verifyKey(apiKey));
 		}),
 	],
 

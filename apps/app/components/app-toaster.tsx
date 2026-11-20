@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 
 const CLASSIC_TOAST_ROUTES = new Set([
 	"/sign-in",
+	"/get-started",
 	"/grant-access",
 	"/onboarding",
-	"/onboarding/research",
 ]);
 
 export function AppToaster() {

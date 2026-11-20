@@ -1,5 +1,6 @@
 import Logo from "@crm/ui/components/logo";
 import { cn } from "@crm/ui/lib/utils";
+import { PRODUCT } from "@crm/validation/product";
 
 export function Wordmark({ className }: { className?: string }) {
 	return (
@@ -11,7 +12,7 @@ export function Wordmark({ className }: { className?: string }) {
 		>
 			<Logo className="size-[18px] shrink-0 text-foreground" />
 			<span className="font-semibold text-[15px]/5 tracking-[-0.01em]">
-				CRM
+				{PRODUCT.name}
 			</span>
 		</span>
 	);

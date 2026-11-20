@@ -14,8 +14,8 @@ import { restMeta } from "../trpc/openapi";
 import {
 	invitationIdInput,
 	invitationListOutput,
-	invitationOutput,
 	inviteMemberInput,
+	inviteMemberOutput,
 	memberListInput,
 	memberListOutput,
 	okOutput,
@@ -105,7 +105,7 @@ export class WorkspaceRouter {
 
 	@Mutation({
 		input: inviteMemberInput,
-		output: invitationOutput,
+		output: inviteMemberOutput,
 		meta: restMeta("POST", "/workspace/invitations", ["Workspace"]),
 	})
 	async invite(

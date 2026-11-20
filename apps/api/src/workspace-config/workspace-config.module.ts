@@ -8,5 +8,6 @@ import { WorkspaceConfigService } from "./workspace-config.service";
 @Module({
 	imports: [AgentModule, PipelineModule, TrpcModule],
 	providers: [WorkspaceConfigService, WorkspaceConfigRouter],
+	exports: [WorkspaceConfigService],
 })
 export class WorkspaceConfigModule {}

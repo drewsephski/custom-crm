@@ -141,7 +141,7 @@ export async function runPortrait({
 			companyDomain: contact.company?.domain ?? null,
 		},
 		spend,
-		await enabled(CONTEXT_DEV_PEOPLE),
+		enabled(CONTEXT_DEV_PEOPLE),
 	);
 
 	if (!found.found) {

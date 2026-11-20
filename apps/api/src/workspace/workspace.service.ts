@@ -1,3 +1,6 @@
+import { sendEmail } from "@crm/auth/email";
+import { invitationEmail } from "@crm/auth/email-templates";
+import { appUrl } from "@crm/auth/env";
 import {
 	canChangeRole,
 	canChangeRoleOf,
@@ -42,6 +45,7 @@ import type {
 	CreateWorkspaceInput,
 	InvitationView,
 	InviteMemberInput,
+	InviteMemberResult,
 	MemberListInput,
 	MyInvitation,
 	RemoveMemberInput,
@@ -103,6 +107,14 @@ function invitationStatus(row: {
 		? (row.status as InvitationStatus)
 		: "canceled";
 }
+
+export type NewWorkspace = {
+	userId: string;
+	sessionId: string | null;
+	name: string;
+	website: string | null;
+	onboarded: boolean;
+};
 
 function newId(): string {
 	return crypto.randomUUID();
@@ -184,55 +196,26 @@ export class WorkspaceService {
 			);
 		}
 
-		const organizationId = newId();
-
 		const created = await runAsSystem("create a workspace", () =>
-			this.db.$transaction(async (tx) => {
-				const slug = await this.uniqueSlug(tx, input.name);
-
-				const organization = await tx.organization.create({
-					data: {
-						id: organizationId,
-						name: input.name,
-						slug,
-						website,
-						metadata: markOnboarded(null, new Date()),
-						createdAt: new Date(),
-					},
-					select: { id: true, slug: true, name: true },
-				});
-
-				await tx.member.create({
-					data: {
-						id: newId(),
-						organizationId,
-						userId,
-						role: "owner",
-						createdAt: new Date(),
-					},
-				});
-
-				await tx.appSetting.create({ data: { organizationId } });
-
-				if (sessionId) {
-					await tx.session.updateMany({
-						where: { id: sessionId, userId },
-						data: { activeOrganizationId: organizationId },
-					});
-				}
-
-				return organization;
-			}),
+			this.db.$transaction((tx) =>
+				this.createWithin(tx, {
+					userId,
+					sessionId,
+					name: input.name,
+					website,
+					onboarded: true,
+				}),
+			),
 		);
 
 		this.logger.log({
 			message: "Workspace created",
 			userId,
-			organizationId,
+			organizationId: created.id,
 		});
 
 		if (website) {
-			await runInTenant(organizationId, () =>
+			await runInTenant(created.id, () =>
 				this.agent.workspaceChanged(
 					website,
 					"The agency using this CRM said what its website is",
@@ -240,12 +223,79 @@ export class WorkspaceService {
 			);
 		}
 
+		return created;
+	}
+
+	async createWithin(
+		tx: Prisma.TransactionClient,
+		input: NewWorkspace,
+	): Promise<WorkspaceSummary> {
+		const organizationId = newId();
+		const slug = await this.uniqueSlug(tx, input.name);
+
+		const organization = await tx.organization.create({
+			data: {
+				id: organizationId,
+				name: input.name,
+				slug,
+				website: input.website,
+				metadata: input.onboarded ? markOnboarded(null, new Date()) : null,
+				createdAt: new Date(),
+			},
+			select: { id: true, slug: true, name: true },
+		});
+
+		await tx.member.create({
+			data: {
+				id: newId(),
+				organizationId,
+				userId: input.userId,
+				role: "owner",
+				createdAt: new Date(),
+			},
+		});
+
+		await tx.appSetting.create({ data: { organizationId } });
+
+		if (input.sessionId) {
+			await tx.session.updateMany({
+				where: { id: input.sessionId, userId: input.userId },
+				data: { activeOrganizationId: organizationId },
+			});
+		}
+
 		return {
-			id: created.id,
-			slug: created.slug,
-			name: created.name,
+			id: organization.id,
+			slug: organization.slug,
+			name: organization.name,
 			role: "owner",
 		};
+	}
+
+	async renameWithin(
+		tx: Prisma.TransactionClient,
+		organizationId: string,
+		input: { name: string; website: string | null },
+	): Promise<{ id: string; slug: string; name: string }> {
+		const current = await tx.organization.findUnique({
+			where: { id: organizationId },
+			select: { name: true, slug: true },
+		});
+
+		if (!current) {
+			throw new NotFoundException("That workspace does not exist.");
+		}
+
+		const slug =
+			current.name === input.name
+				? current.slug
+				: await this.uniqueSlug(tx, input.name, organizationId);
+
+		return tx.organization.update({
+			where: { id: organizationId },
+			data: { name: input.name, slug, website: input.website },
+			select: { id: true, slug: true, name: true },
+		});
 	}
 
 	async activate(
@@ -492,7 +542,7 @@ export class WorkspaceService {
 	async invite(
 		userId: string,
 		input: InviteMemberInput,
-	): Promise<InvitationView> {
+	): Promise<InviteMemberResult> {
 		const organizationId = requireOrganizationId();
 		const actor = await this.roleOf(userId);
 
@@ -508,42 +558,50 @@ export class WorkspaceService {
 			);
 		}
 
-		const row = await runAsSystem("invite a workspace member", () =>
-			this.db.$transaction(async (tx) => {
-				const existing = await tx.member.findFirst({
-					where: {
-						organizationId,
-						user: { email: { equals: input.email, mode: "insensitive" } },
-					},
-					select: { id: true },
-				});
+		const { row, workspaceName } = await runAsSystem(
+			"invite a workspace member",
+			() =>
+				this.db.$transaction(async (tx) => {
+					const existing = await tx.member.findFirst({
+						where: {
+							organizationId,
+							user: { email: { equals: input.email, mode: "insensitive" } },
+						},
+						select: { id: true },
+					});
 
-				if (existing) {
-					throw new ConflictException("That person is already a member.");
-				}
+					if (existing) {
+						throw new ConflictException("That person is already a member.");
+					}
 
-				await tx.invitation.updateMany({
-					where: {
-						organizationId,
-						email: { equals: input.email, mode: "insensitive" },
-						status: "pending",
-					},
-					data: { status: "canceled" },
-				});
+					await tx.invitation.updateMany({
+						where: {
+							organizationId,
+							email: { equals: input.email, mode: "insensitive" },
+							status: "pending",
+						},
+						data: { status: "canceled" },
+					});
 
-				return tx.invitation.create({
-					data: {
-						id: newId(),
-						organizationId,
-						email: input.email,
-						role: input.role,
-						status: "pending",
-						inviterId: userId,
-						expiresAt: new Date(Date.now() + WORKSPACE.invitation.ttlMs),
-					},
-					select: INVITATION_SELECT,
-				});
-			}),
+					const created = await tx.invitation.create({
+						data: {
+							id: newId(),
+							organizationId,
+							email: input.email,
+							role: input.role,
+							status: "pending",
+							inviterId: userId,
+							expiresAt: new Date(Date.now() + WORKSPACE.invitation.ttlMs),
+						},
+						select: INVITATION_SELECT,
+					});
+					const organization = await tx.organization.findUniqueOrThrow({
+						where: { id: organizationId },
+						select: { name: true },
+					});
+
+					return { row: created, workspaceName: organization.name };
+				}),
 		);
 
 		this.logger.log({
@@ -553,7 +611,41 @@ export class WorkspaceService {
 			role: input.role,
 		});
 
-		return this.toInvitation(row);
+		const invitation = this.toInvitation(row);
+
+		return {
+			...invitation,
+			emailStatus: await this.sendInvitationEmail(invitation, workspaceName),
+		};
+	}
+
+	private async sendInvitationEmail(
+		invitation: InvitationView,
+		workspaceName: string,
+	): Promise<InviteMemberResult["emailStatus"]> {
+		const result = await sendEmail({
+			to: invitation.email,
+			...invitationEmail({
+				workspaceName,
+				inviterName: invitation.invitedBy,
+				role: invitation.role,
+				email: invitation.email,
+				url: new URL(WORKSPACE.invitation.acceptPath, appUrl).toString(),
+				expiresInDays: WORKSPACE.invitation.ttlDays,
+			}),
+		});
+
+		if (!result.ok && result.reason !== "off") {
+			this.logger.warn({
+				message: "Workspace invitation email not sent",
+				invitationId: invitation.id,
+				reason: result.reason,
+				detail: result.detail,
+			});
+			return "failed";
+		}
+
+		return result.ok && result.delivery === "resend" ? "sent" : "not-sent";
 	}
 
 	async invitations(userId: string): Promise<InvitationView[]> {

@@ -6,6 +6,7 @@ import type {
 import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
+import { linkedinSlug } from "./linkedin";
 
 export type EnrichedMatch = PersonEnrichResponse["match"];
 
@@ -135,7 +136,7 @@ const candidateShape = z.object({
 export async function personByProfileUrl(
 	profileUrl: string,
 ): Promise<PersonMatch> {
-	const api = await contextDev();
+	const api = contextDev();
 	if (!api) {
 		return { outcome: "skipped", reason: "Context.dev is not configured." };
 	}
@@ -163,7 +164,7 @@ export type IdentityClues = {
 export async function personByClues(
 	clues: IdentityClues,
 ): Promise<PersonMatch> {
-	const api = await contextDev();
+	const api = contextDev();
 	if (!api) {
 		return { outcome: "skipped", reason: "Context.dev is not configured." };
 	}
@@ -207,7 +208,7 @@ export function matchFrom(match: EnrichedMatch): PersonMatch {
 
 function toPerson(raw: z.infer<typeof personShape>): Person {
 	const socialUrls = raw.social_urls.flatMap((url) => (url ? [url] : []));
-	const profileUrl = socialUrls.find((url) => slugFromProfileUrl(url) !== null);
+	const profileUrl = socialUrls.find((url) => linkedinSlug(url) !== null);
 	const current = raw.current_role ? [toRole(raw.current_role)] : [];
 	const experience = raw.experience.map(toRole);
 
@@ -302,24 +303,6 @@ export function photoUrl(raw: string | null): string | null {
 		);
 
 		return trusted ? url.toString() : null;
-	} catch {
-		return null;
-	}
-}
-
-export function slugFromProfileUrl(raw: string | null): string | null {
-	if (!raw) return null;
-
-	try {
-		const url = new URL(raw.trim());
-
-		const host = url.hostname.toLowerCase();
-		if (host !== "linkedin.com" && !host.endsWith(".linkedin.com")) return null;
-
-		const [section, slug] = url.pathname.split("/").filter(Boolean);
-		if (section !== "in" || !slug) return null;
-
-		return decodeURIComponent(slug);
 	} catch {
 		return null;
 	}

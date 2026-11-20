@@ -5,13 +5,20 @@ import { AuthButton } from "@crm/ui/components/auth-button";
 import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useState } from "react";
 import { toast } from "sonner";
+import { SIGN_IN_PATH, withNext } from "@/lib/auth-redirect";
 
 export type SsoProvider = {
 	providerId: string;
 	name: string;
 };
 
-export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
+export function SsoSignIn({
+	providers,
+	next,
+}: {
+	providers: SsoProvider[];
+	next: string;
+}) {
 	const [pending, setPending] = useState<string | null>(null);
 
 	function fail(message?: string) {
@@ -26,8 +33,8 @@ export function SsoSignIn({ providers }: { providers: SsoProvider[] }) {
 
 		const { error } = await signIn.sso({
 			providerId,
-			callbackURL: `${origin}/`,
-			errorCallbackURL: `${origin}/sign-in`,
+			callbackURL: `${origin}${next}`,
+			errorCallbackURL: `${origin}${withNext(SIGN_IN_PATH, next)}`,
 		});
 
 		if (error) fail(error.message);

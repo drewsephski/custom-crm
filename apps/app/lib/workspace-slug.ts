@@ -4,6 +4,7 @@ const SETUP_SEGMENTS = new Set([
 	"invitations",
 	"grant-access",
 	"sign-in",
+	"get-started",
 ]);
 
 export function slugFromPathname(pathname: string): string | null {

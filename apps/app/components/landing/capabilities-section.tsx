@@ -51,7 +51,10 @@ export function CapabilitiesSection() {
 	return (
 		<section className="relative flex w-full shrink-0 flex-col items-center px-6 pt-20 pb-20 md:pb-30">
 			<div className="flex w-full max-w-6xl flex-col gap-12 md:gap-[72px]">
-				<SectionHeading title="What it actually does" />
+				<SectionHeading
+					title="What it does for you"
+					lede="Research, enrichment and pipeline work run without you. Every fact shows its source."
+				/>
 
 				<div className="flex flex-col gap-4 lg:flex-row">
 					<div className="flex min-w-0 grow flex-col gap-4">
@@ -76,7 +79,7 @@ function EnrichmentCard() {
 		<BentoCard className="gap-6">
 			<CardHeading
 				title="Records fill themselves in"
-				body="A new person on a thread becomes a contact, and their company arrives with its logo, industry and last activity already on it."
+				body="A new person on a thread becomes a contact. Their company arrives with its logo, industry and last activity, and each fact links to its source."
 			/>
 
 			<div className="flex select-none flex-col">

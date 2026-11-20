@@ -1,16 +1,12 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
-	unavailable,
-} from "../lib/capabilities";
+import { CONTEXT_DEV_PEOPLE, enabled, unavailable } from "../lib/capabilities";
 import { spend } from "../lib/focus";
 import { verdictFor } from "../lib/identity";
 import { personByProfileUrl } from "../lib/people";
 import { storePortrait } from "../lib/portrait";
 import { inSessionTenant } from "../lib/tenant-scope";
+import { untrustedOutput } from "../lib/untrusted";
 
 export default defineTool({
 	description:
@@ -29,8 +25,8 @@ export default defineTool({
 	}),
 	async execute({ slug, email, companyName, companyDomain, contactId }, ctx) {
 		return inSessionTenant(ctx, async () => {
-			if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-				return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+			if (!enabled(CONTEXT_DEV_PEOPLE)) {
+				return { found: false as const, ...unavailable(CONTEXT_DEV_PEOPLE) };
 			}
 
 			const charge = spend(2);
@@ -63,5 +59,8 @@ export default defineTool({
 				verdict,
 			};
 		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, { profile: "a LinkedIn profile" });
 	},
 });

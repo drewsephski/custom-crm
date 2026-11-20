@@ -1,6 +1,6 @@
+import { PRODUCT } from "@crm/validation/product";
 import type { Metadata } from "next";
 import { AgentSection } from "@/components/landing/agent-section";
-import { LandingAnalytics } from "@/components/landing/analytics";
 import { CapabilitiesSection } from "@/components/landing/capabilities-section";
 import { ClosingCta } from "@/components/landing/closing-cta";
 import { Hero } from "@/components/landing/hero";
@@ -8,10 +8,22 @@ import { LandingFooter } from "@/components/landing/landing-footer";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { ProductShot } from "@/components/landing/product-shot/product-shot";
 
+const TITLE = `${PRODUCT.name}: ${PRODUCT.tagline}`;
+
 export const metadata: Metadata = {
-	title: "The CRM for agents",
-	description:
-		"The first agentic CRM experience. Durable research agents that read your inbox, keep every record current and book their own follow-ups.",
+	title: { absolute: TITLE },
+	description: PRODUCT.description,
+	openGraph: {
+		type: "website",
+		siteName: PRODUCT.name,
+		title: TITLE,
+		description: PRODUCT.description,
+	},
+	twitter: {
+		card: "summary",
+		title: TITLE,
+		description: PRODUCT.description,
+	},
 };
 
 export default function Home() {
@@ -24,7 +36,6 @@ export default function Home() {
 			<CapabilitiesSection />
 			<ClosingCta />
 			<LandingFooter />
-			<LandingAnalytics />
 		</div>
 	);
 }

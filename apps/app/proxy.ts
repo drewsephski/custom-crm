@@ -2,17 +2,20 @@ import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { getSessionCookie } from "better-auth/cookies";
 import { type NextRequest, NextResponse } from "next/server";
-import { isMarketing } from "@/lib/env";
 import {
-	ONBOARDING_PATH,
-	RESEARCH_PATH,
-	readWorkspaceGate,
-} from "@/lib/onboarding";
+	GET_STARTED_PATH,
+	LANDING_PATH,
+	NEXT_PARAM,
+	SIGN_IN_PATH,
+	safeNextPath,
+	signInPathFor,
+} from "@/lib/auth-redirect";
+import { ONBOARDING_PATH, readWorkspaceGate } from "@/lib/onboarding";
 import { workspaceUrl } from "@/lib/workspace-url";
 
-const LANDING_PATH = "/";
+const AUTH_PAGES = [SIGN_IN_PATH, GET_STARTED_PATH];
 
-const SIGN_IN_PATH = "/sign-in";
+const PUBLIC = [LANDING_PATH, ...AUTH_PAGES];
 
 const UNGATED = ["/grant-access", "/eve", "/invitations"];
 
@@ -23,17 +26,19 @@ const SECTIONS = ["/companies", "/contacts", "/deals", "/tasks", "/settings"];
 export async function proxy(request: NextRequest) {
 	const { pathname } = request.nextUrl;
 
-	if (pathname === SIGN_IN_PATH) return NextResponse.next();
-
 	if (isAnonymous(pathname)) return NextResponse.next();
 
 	if (
 		getSessionCookie(request, { cookiePrefix: AUTH_COOKIE_PREFIX }) === null
 	) {
-		return isPublic(pathname)
+		return PUBLIC.includes(pathname)
 			? NextResponse.next()
-			: NextResponse.redirect(new URL(SIGN_IN_PATH, request.nextUrl));
+			: sendToSignIn(request);
 	}
+
+	if (pathname === LANDING_PATH) return NextResponse.next();
+
+	if (AUTH_PAGES.includes(pathname)) return leaveAuthPage(request);
 
 	if (isUngated(pathname)) return NextResponse.next();
 
@@ -48,7 +53,7 @@ export async function proxy(request: NextRequest) {
 	}
 
 	if (workspace.kind === "no-workspace") {
-		return pathname === ONBOARDING_PATH
+		return isSetup(pathname)
 			? NextResponse.next()
 			: sendTo(ONBOARDING_PATH, request);
 	}
@@ -64,13 +69,27 @@ export async function proxy(request: NextRequest) {
 	const creatingAnother =
 		pathname === ONBOARDING_PATH &&
 		request.nextUrl.searchParams.get("new") === "1";
-	const target =
-		pathname === RESEARCH_PATH || creatingAnother
-			? pathname
-			: appPath(pathname, workspace.slug);
+	const target = creatingAnother ? pathname : appPath(pathname, workspace.slug);
 	if (target !== pathname) return sendTo(target, request);
 
 	return forwardWorkspace(request, workspace.slug);
+}
+
+function sendToSignIn(request: NextRequest): NextResponse {
+	const { pathname, search } = request.nextUrl;
+
+	return NextResponse.redirect(
+		new URL(signInPathFor(`${pathname}${search}`), request.nextUrl),
+	);
+}
+
+async function leaveAuthPage(request: NextRequest): Promise<NextResponse> {
+	const workspace = await readWorkspaceGate(request, null);
+	if (workspace.kind === "unknown") return NextResponse.next();
+
+	const next = safeNextPath(request.nextUrl.searchParams.get(NEXT_PARAM));
+
+	return NextResponse.redirect(new URL(next, request.nextUrl));
 }
 
 function requestedSlug(request: NextRequest): string | null {
@@ -89,9 +108,7 @@ function forwardWorkspace(request: NextRequest, slug: string): NextResponse {
 }
 
 function appPath(pathname: string, slug: string): string {
-	if (pathname === LANDING_PATH || isSetup(pathname)) {
-		return workspaceUrl(slug);
-	}
+	if (isSetup(pathname)) return workspaceUrl(slug);
 
 	if (SECTIONS.some((section) => isUnder(pathname, section))) {
 		return workspaceUrl(slug, pathname);
@@ -108,10 +125,6 @@ function isUnder(pathname: string, prefix: string): boolean {
 	return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-function isPublic(pathname: string): boolean {
-	return pathname === LANDING_PATH && isMarketing();
-}
-
 function isUngated(pathname: string): boolean {
 	return UNGATED.some((prefix) => isUnder(pathname, prefix));
 }
@@ -121,7 +134,7 @@ function isAnonymous(pathname: string): boolean {
 }
 
 function isSetup(pathname: string): boolean {
-	return pathname === ONBOARDING_PATH || pathname === RESEARCH_PATH;
+	return isUnder(pathname, ONBOARDING_PATH);
 }
 
 function sendTo(

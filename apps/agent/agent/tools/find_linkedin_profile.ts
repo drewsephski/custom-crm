@@ -1,15 +1,11 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import {
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SOURCE,
-	enabled,
-	unavailable,
-} from "../lib/capabilities";
+import { CONTEXT_DEV_PEOPLE, enabled, unavailable } from "../lib/capabilities";
 import { CONTEXT } from "../lib/context-config";
 import { spend } from "../lib/focus";
 import { findLinkedinProfiles } from "../lib/linkedin-find";
 import { inSessionTenant } from "../lib/tenant-scope";
+import { untrustedOutput } from "../lib/untrusted";
 
 export default defineTool({
 	description:
@@ -26,8 +22,8 @@ export default defineTool({
 	}),
 	async execute({ firstName, lastName, company }, ctx) {
 		return inSessionTenant(ctx, async () => {
-			if (!(await enabled(CONTEXT_DEV_PEOPLE))) {
-				return { found: false as const, ...unavailable(CONTEXT_DEV_SOURCE) };
+			if (!enabled(CONTEXT_DEV_PEOPLE)) {
+				return { found: false as const, ...unavailable(CONTEXT_DEV_PEOPLE) };
 			}
 
 			const charge = spend(2 * CONTEXT.linkedinFind.maxProfiles);
@@ -52,5 +48,8 @@ export default defineTool({
 				note: "Each candidate's name matches. Check its roles against what the user said before treating it as the person they mean.",
 			};
 		});
+	},
+	toModelOutput(output) {
+		return untrustedOutput(output, { candidates: "LinkedIn profiles" });
 	},
 });

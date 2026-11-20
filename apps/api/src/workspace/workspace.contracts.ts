@@ -115,6 +115,18 @@ export const invitationOutput = z.object({
 
 export type InvitationView = z.infer<typeof invitationOutput>;
 
+export const INVITATION_EMAIL_STATUSES = [
+	"sent",
+	"not-sent",
+	"failed",
+] as const;
+
+export const inviteMemberOutput = invitationOutput.extend({
+	emailStatus: z.enum(INVITATION_EMAIL_STATUSES),
+});
+
+export type InviteMemberResult = z.infer<typeof inviteMemberOutput>;
+
 export const invitationListOutput = z.array(invitationOutput);
 
 export const myInvitationOutput = z.object({

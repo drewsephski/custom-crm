@@ -2,9 +2,10 @@ const SECOND_MS = 1_000;
 
 export const CONTEXT = {
 	timeoutMs: 60 * SECOND_MS,
-	verifyTimeoutMs: 15 * SECOND_MS,
 	maxRetries: 1,
 	keyVariable: "CONTEXT_DEV_API_KEY",
+	redactedKey: "[redacted key]",
+	errorChars: 300,
 
 	people: {
 		matchFloor: 70,

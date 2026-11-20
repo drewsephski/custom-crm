@@ -27,13 +27,15 @@ import { fieldListInput, fieldListOutput, fieldByKeyInput, serializedFieldOutput
 import { googleConnectionStatusOutput, setAutoCreateInput, suppressDomainInput, suppressDomainOutput, threadInput, emailThreadOutput, calendarEventInput, calendarEventOutput } from "../google/google.contracts";
 import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOutput, setOutlookAutoCreateInput } from "../microsoft/microsoft.contracts";
 import { mcpListOutput, mcpGetInput, mcpGetOutput, mcpToolsInput, mcpToolsOutput, mcpStartInput, mcpStartOutput, mcpReconnectInput, mcpReconnectOutput, mcpDisconnectInput, mcpDisconnectOutput, mcpReviewToolsInput, mcpReviewToolsOutput } from "../mcp/mcp.contracts";
+import { stateInput, stateOutput, saveBusinessTypeInput, progressOutput, saveGoalsInput, saveBusinessInput, saveCustomizeInput, lookupBrandInput, brandOutput, finishOutput } from "../onboarding/onboarding.contracts";
 import { pipelineOutput } from "../pipeline/pipeline.contracts";
+import { researchForRecordInput, researchForRecordOutput, researchUsageOutput, researchDecideFindingInput, researchDecideFindingOutput } from "../research/research.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
-import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOutput, setResearchKeyInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
+import { agentModelOutput, modelCatalogOutput, setAgentModelInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
-import { workspaceLiveOutput, workspaceOutput, memberListInput, memberListOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, okOutput, inviteMemberInput, invitationOutput, invitationListOutput, invitationIdInput, workspaceListOutput, createWorkspaceInput, workspaceSummaryOutput, activateWorkspaceInput, myInvitationListOutput } from "../workspace/workspace.contracts";
+import { workspaceLiveOutput, workspaceOutput, memberListInput, memberListOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, okOutput, inviteMemberInput, inviteMemberOutput, invitationListOutput, invitationIdInput, workspaceListOutput, createWorkspaceInput, workspaceSummaryOutput, activateWorkspaceInput, myInvitationListOutput } from "../workspace/workspace.contracts";
 import { configStateOutput, proposeInput, configVersionOutput, editInput, planInput, applyInput, applyOutput } from "../workspace-config/workspace-config.contracts";
 import { pipelinePlanOutput } from "../workspace-config/../pipeline/pipeline.contracts";
 import type { UsersRouter } from "../users/users.router";
@@ -637,10 +639,55 @@ const appRouter = t.router({
       .output(microsoftConnectionStatusOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
+  onboarding: t.router({
+    state: publicProcedure
+      .input(stateInput)
+      .output(stateOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    saveBusinessType: publicProcedure
+      .input(saveBusinessTypeInput)
+      .output(progressOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    saveGoals: publicProcedure
+      .input(saveGoalsInput)
+      .output(progressOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    saveBusiness: publicProcedure
+      .input(saveBusinessInput)
+      .output(progressOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    saveCustomize: publicProcedure
+      .input(saveCustomizeInput)
+      .output(progressOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    lookupBrand: publicProcedure
+      .input(lookupBrandInput)
+      .output(brandOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    back: publicProcedure
+      .output(progressOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    finish: publicProcedure
+      .output(finishOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
   pipeline: t.router({
     active: publicProcedure
       .output(pipelineOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
+    }),
+  research: t.router({
+    forRecord: publicProcedure
+      .input(researchForRecordInput)
+      .output(researchForRecordOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    usage: publicProcedure
+      .output(researchUsageOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    decideFinding: publicProcedure
+      .input(researchDecideFindingInput)
+      .output(researchDecideFindingOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   savedViews: t.router({
     list: publicProcedure
@@ -685,13 +732,6 @@ const appRouter = t.router({
     setAgentModel: publicProcedure
       .input(setAgentModelInput)
       .output(agentModelOutput)
-      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    researchKey: publicProcedure
-      .output(researchKeyOutput)
-      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
-    setResearchKey: publicProcedure
-      .input(setResearchKeyInput)
-      .output(researchKeyOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     archiveRetention: publicProcedure
       .output(archiveRetentionOutput)
@@ -825,7 +865,7 @@ const appRouter = t.router({
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     invite: publicProcedure
       .input(inviteMemberInput)
-      .output(invitationOutput)
+      .output(inviteMemberOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     invitations: publicProcedure
       .output(invitationListOutput)

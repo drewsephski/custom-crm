@@ -11,17 +11,9 @@ const SLUG = "comp-ai";
 
 const realFetch = globalThis.fetch;
 
-const realMarketing = process.env.IS_MARKETING;
-
 afterEach(() => {
 	globalThis.fetch = realFetch;
-	marketing(realMarketing);
 });
-
-function marketing(value: string | undefined) {
-	if (value === undefined) delete process.env.IS_MARKETING;
-	else process.env.IS_MARKETING = value;
-}
 
 function stub(
 	handler: (url: string, workspace: string | null) => Promise<Response>,
@@ -65,6 +57,10 @@ const noWorkspace: GateResponse = {
 	error: { message: "NO_WORKSPACE", data: { code: "PRECONDITION_FAILED" } },
 };
 
+const unauthorized: GateResponse = {
+	error: { message: "Unauthorized", data: { code: "UNAUTHORIZED" } },
+};
+
 function setup({
 	onboarded = true,
 	canRename = true,
@@ -100,6 +96,14 @@ function redirectedTo(response: Response): string | null {
 	const location = response.headers.get("location");
 
 	return location ? new URL(location).pathname : null;
+}
+
+function redirectTarget(response: Response): string | null {
+	const location = response.headers.get("location");
+	if (!location) return null;
+
+	const url = new URL(location);
+	return `${url.pathname}${url.search}`;
 }
 
 function forwardedWorkspace(response: Response): string | null {
@@ -157,18 +161,116 @@ describe("readWorkspaceGate", () => {
 
 describe("proxy", () => {
 	it("shows a stranger the landing page and nothing behind it", async () => {
-		marketing("true");
-
 		expect(redirectedTo(await proxy(request("/")))).toBeNull();
 		expect(redirectedTo(await proxy(request("/sign-in")))).toBeNull();
+		expect(redirectedTo(await proxy(request("/get-started")))).toBeNull();
 		expect(redirectedTo(await proxy(request(`/${SLUG}`)))).toBe("/sign-in");
 	});
 
-	it("sends a stranger to sign in when the install has no landing page", async () => {
-		marketing(undefined);
+	it("shows the landing page with or without the old marketing flag", async () => {
+		const flag = process.env.IS_MARKETING;
 
-		expect(redirectedTo(await proxy(request("/")))).toBe("/sign-in");
-		expect(redirectedTo(await proxy(request("/sign-in")))).toBeNull();
+		for (const value of ["true", "false", undefined]) {
+			if (value === undefined) delete process.env.IS_MARKETING;
+			else process.env.IS_MARKETING = value;
+
+			expect(redirectedTo(await proxy(request("/")))).toBeNull();
+		}
+
+		if (flag === undefined) delete process.env.IS_MARKETING;
+		else process.env.IS_MARKETING = flag;
+	});
+
+	it("returns a stranger to the page they asked for, query included", async () => {
+		expect(redirectTarget(await proxy(request(`/${SLUG}`)))).toBe(
+			`/sign-in?next=%2F${SLUG}`,
+		);
+		expect(
+			redirectTarget(
+				await proxy(request(`/${SLUG}/companies?record=contact:abc&page=2`)),
+			),
+		).toBe(
+			`/sign-in?next=%2F${SLUG}%2Fcompanies%3Frecord%3Dcontact%3Aabc%26page%3D2`,
+		);
+		expect(redirectTarget(await proxy(request("/invitations")))).toBe(
+			"/sign-in?next=%2Finvitations",
+		);
+		expect(redirectTarget(await proxy(request("/onboarding")))).toBe(
+			"/sign-in?next=%2Fonboarding",
+		);
+	});
+
+	it("shows a signed-in visitor the landing page without asking the API", async () => {
+		const calls = setup();
+
+		expect(
+			redirectedTo(await proxy(request("/", [SESSION_COOKIE]))),
+		).toBeNull();
+		expect(calls).toEqual([]);
+	});
+
+	it("takes a signed-in visitor off the sign-in pages to the entry path", async () => {
+		setup();
+
+		expect(
+			redirectTarget(await proxy(request("/sign-in", [SESSION_COOKIE]))),
+		).toBe("/onboarding");
+		expect(
+			redirectTarget(await proxy(request("/get-started", [SESSION_COOKIE]))),
+		).toBe("/onboarding");
+
+		setup({ none: true });
+		expect(
+			redirectTarget(await proxy(request("/sign-in", [SESSION_COOKIE]))),
+		).toBe("/onboarding");
+	});
+
+	it("takes a signed-in visitor to the page a link asked for, and nowhere else", async () => {
+		setup();
+
+		expect(
+			redirectTarget(
+				await proxy(
+					request("/sign-in?next=%2Finvitations&error=INVALID_TOKEN", [
+						SESSION_COOKIE,
+					]),
+				),
+			),
+		).toBe("/invitations");
+
+		for (const attack of [
+			"%2F%2Fevil.com",
+			"https%3A%2F%2Fevil.com",
+			"%2F%5Cevil.com",
+			"%2F%252F%252Fevil.com",
+			"javascript%3Aalert(1)",
+		]) {
+			const response = await proxy(
+				request(`/sign-in?next=${attack}`, [SESSION_COOKIE]),
+			);
+
+			expect(response.headers.get("location")).toBe(
+				"http://localhost:3000/onboarding",
+			);
+		}
+	});
+
+	it("leaves the sign-in page up when the cookie no longer signs anyone in", async () => {
+		answerWith(unauthorized, 401);
+
+		expect(
+			redirectedTo(await proxy(request("/sign-in", [SESSION_COOKIE]))),
+		).toBeNull();
+		expect(
+			redirectedTo(await proxy(request("/get-started", [SESSION_COOKIE]))),
+		).toBeNull();
+
+		stub(async () => {
+			throw new Error("connect ECONNREFUSED");
+		});
+		expect(
+			redirectedTo(await proxy(request("/sign-in", [SESSION_COOKIE]))),
+		).toBeNull();
 	});
 
 	it("ignores a neighbour's cookie from the parent domain", async () => {
@@ -231,11 +333,16 @@ describe("proxy", () => {
 				await proxy(request(`/${SLUG}/companies`, [SESSION_COOKIE])),
 			),
 		).toBeNull();
+	});
+
+	it("takes a settled rep off the retired research page", async () => {
+		setup();
+
 		expect(
 			redirectedTo(
 				await proxy(request("/onboarding/research", [SESSION_COOKIE])),
 			),
-		).toBeNull();
+		).toBe(`/${SLUG}`);
 	});
 
 	it("moves a workspace the rep does not belong to onto their own, keeping the rest", async () => {

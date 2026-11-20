@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-process.env.API_URL = "https://crm.example.test";
+const { apiUrl } = await import("../src/env");
 
 const { canConfigureSso, ssoCallbackBase, ssoCallbackURL, ssoProviderName } =
 	await import("../src/sso");
@@ -16,15 +16,11 @@ describe("canConfigureSso", () => {
 
 describe("ssoCallbackURL", () => {
 	it("is the API origin plus the path better-auth mounts the callback on", () => {
-		expect(ssoCallbackURL("okta")).toBe(
-			"https://crm.example.test/api/auth/sso/callback/okta",
-		);
+		expect(ssoCallbackURL("okta")).toBe(`${apiUrl}/api/auth/sso/callback/okta`);
 	});
 
 	it("hangs off the base the settings page shows", () => {
-		expect(ssoCallbackBase()).toBe(
-			"https://crm.example.test/api/auth/sso/callback",
-		);
+		expect(ssoCallbackBase()).toBe(`${apiUrl}/api/auth/sso/callback`);
 	});
 });
 

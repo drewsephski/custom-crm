@@ -1,7 +1,13 @@
 import { Link } from "@crm/ui/components/link";
-import Logo from "@crm/ui/components/logo";
-import { REPO_LINKS } from "./links";
+import { PRODUCT } from "@crm/validation/product";
+import NextLink from "next/link";
+import { GET_STARTED_PATH, SIGN_IN_PATH } from "@/lib/auth-redirect";
 import { Wordmark } from "./wordmark";
+
+const PRODUCT_LINKS = [
+	{ label: "Get started", href: GET_STARTED_PATH },
+	{ label: "Sign in", href: SIGN_IN_PATH },
+] as const;
 
 export function LandingFooter() {
 	return (
@@ -10,24 +16,25 @@ export function LandingFooter() {
 				<div className="flex w-[280px] max-w-full shrink-0 flex-col gap-[14px]">
 					<Wordmark />
 					<p className="text-[13px]/[21px] text-muted-foreground">
-						The open source agentic CRM.
+						{PRODUCT.tagline}.
 					</p>
 				</div>
 
-				<nav className="flex w-[180px] shrink-0 flex-col items-start gap-[14px]">
+				<nav
+					aria-label="Product"
+					className="flex w-[180px] shrink-0 flex-col items-start gap-[14px]"
+				>
 					<p className="font-mono text-[11px]/4 text-muted-foreground tracking-widest">
-						PROJECT
+						PRODUCT
 					</p>
-					{REPO_LINKS.map((link) => (
+					{PRODUCT_LINKS.map((link) => (
 						<Link
-							key={link.label}
+							key={link.href}
 							variant="quiet"
-							href={link.href}
-							target="_blank"
-							rel="noreferrer"
+							asChild
 							className="text-[13px]/6"
 						>
-							{link.label}
+							<NextLink href={link.href}>{link.label}</NextLink>
 						</Link>
 					))}
 				</nav>
@@ -35,21 +42,17 @@ export function LandingFooter() {
 
 			<div className="flex w-full justify-center border-border border-t">
 				<div className="flex w-full max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-4 md:h-[60px] md:py-0">
-					<p className="flex flex-1 items-center gap-[5px] pt-[2px] text-[13px]/[21px] text-muted-foreground">
-						Built with love by
-						<Logo className="size-[13px] shrink-0 text-foreground" />
+					<p className="text-[13px]/[21px] text-muted-foreground">
+						{PRODUCT.name} is built on the open-source project{" "}
 						<Link
-							href="https://trycomp.ai?utm_source=crm_landing_footer&utm_medium=referral"
+							href={PRODUCT.upstream.url}
 							target="_blank"
+							rel="noreferrer"
 							className="font-medium text-foreground"
 						>
-							Comp AI
-						</Link>
-					</p>
-
-					<p className="flex items-center gap-2 text-[13px]/5 text-muted-foreground">
-						<span className="size-1.5 shrink-0 rounded-full bg-ring" />
-						All systems normal
+							{PRODUCT.upstream.name}
+						</Link>{" "}
+						({PRODUCT.upstream.license} license).
 					</p>
 				</div>
 			</div>

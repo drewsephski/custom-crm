@@ -58,7 +58,7 @@ export async function runBrand({
 
 	if (!company) return { enriched: false, reason: "No such company." };
 
-	if (!(await contextDevEnabled())) {
+	if (!contextDevEnabled()) {
 		const reason =
 			"Context.dev is not configured, so there is nowhere to look.";
 		await settle(companyId, EnrichmentStatus.SKIPPED, reason);

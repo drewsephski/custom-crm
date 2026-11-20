@@ -12,7 +12,7 @@ import { LogoSpinner } from "@crm/ui/components/logo-spinner";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
-export function PasswordSignIn() {
+export function PasswordSignIn({ next }: { next: string }) {
 	const nameId = useId();
 	const emailId = useId();
 	const passwordId = useId();
@@ -39,7 +39,7 @@ export function PasswordSignIn() {
 					toast.error(error.message ?? "That did not work.");
 					return;
 				}
-				window.location.assign("/");
+				window.location.assign(next);
 			}}
 		>
 			<AuthFieldGroup>

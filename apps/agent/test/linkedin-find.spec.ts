@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
+import { linkedinSlug } from "../agent/lib/linkedin";
 import {
 	candidateFrom,
 	candidateSlugs,
 	guessedSlugs,
-	profileSlug,
 	searchedSlugs,
 } from "../agent/lib/linkedin-find";
 import type { Person } from "../agent/lib/people";
@@ -32,10 +32,10 @@ function person(overrides: Partial<Person>): Person {
 
 describe("finding a LinkedIn profile by name", () => {
 	it("reads the slug from a profile URL and ignores company pages", () => {
-		expect(profileSlug("https://www.linkedin.com/in/Sam-Stehno/?trk=x")).toBe(
+		expect(linkedinSlug("https://www.linkedin.com/in/Sam-Stehno/?trk=x")).toBe(
 			"sam-stehno",
 		);
-		expect(profileSlug("https://www.linkedin.com/company/oxy")).toBeNull();
+		expect(linkedinSlug("https://www.linkedin.com/company/oxy")).toBeNull();
 	});
 
 	it("guesses the usual vanity addresses", () => {

@@ -8,7 +8,7 @@ import {
 	XIcon,
 } from "lucide-react";
 import Image from "next/image";
-import { OWNER } from "./companies";
+import { OWNER, SAMPLE_WORKSPACE } from "./companies";
 import { CompanyMark } from "./company-mark";
 
 const TABS = [
@@ -56,15 +56,19 @@ function SheetHeader({ compact }: { compact?: boolean }) {
 			)}
 		>
 			<div className="flex items-start gap-3">
-				<CompanyMark company={{ name: "Comp AI" }} size={32} glyph={18} />
+				<CompanyMark
+					company={{ name: SAMPLE_WORKSPACE.name }}
+					size={32}
+					glyph={18}
+				/>
 
 				<div className="min-w-0 grow pt-0.5">
 					<p className="mb-0.5 font-medium text-lg/[125%] tracking-[-0.45px]">
-						Comp AI
+						{SAMPLE_WORKSPACE.name}
 					</p>
 					<p className="flex gap-x-3 text-muted-foreground text-xs/[162.5%]">
-						<span>trycomp.ai</span>
-						<span>Compliance</span>
+						<span>{SAMPLE_WORKSPACE.domain}</span>
+						<span>{SAMPLE_WORKSPACE.industry}</span>
 					</p>
 				</div>
 
@@ -214,8 +218,8 @@ function AgentEmptyState({ compact }: { compact?: boolean }) {
 				</p>
 				{compact ? null : (
 					<p className="text-center text-muted-foreground text-xs/[19px]">
-						It reads their site and our own history with them, and shows its
-						working.
+						It reads their site and your history with them, and cites its
+						sources.
 					</p>
 				)}
 			</div>

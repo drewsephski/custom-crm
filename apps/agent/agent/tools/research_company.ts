@@ -2,6 +2,7 @@ import { workspaceAuthor } from "@crm/auth/organization";
 import { ActivityType, db } from "@crm/db";
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { CONTEXT_DEV, enabled, unavailable } from "../lib/capabilities";
 import { extract, type JsonSchema } from "../lib/context-dev";
 import { spend } from "../lib/focus";
 import { inSessionTenant } from "../lib/tenant-scope";
@@ -78,6 +79,10 @@ export default defineTool({
 	}),
 	async execute({ companyId }, ctx) {
 		return inSessionTenant(ctx, async () => {
+			if (!enabled(CONTEXT_DEV)) {
+				return { written: false as const, ...unavailable(CONTEXT_DEV) };
+			}
+
 			const company = await db.company.findUnique({
 				where: { id: companyId },
 				select: {

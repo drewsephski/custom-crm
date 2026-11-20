@@ -56,7 +56,16 @@ export function InviteMembers() {
 			onSuccess: async (invitation) => {
 				setEmail("");
 				await refresh();
-				toast.success(`Invitation sent to ${invitation.email}.`);
+				if (invitation.emailStatus === "sent") {
+					toast.success(`Invitation sent to ${invitation.email}.`);
+					return;
+				}
+				toast.success(
+					`Invitation created. ${invitation.email} sees it at /invitations after sign-in.`,
+					invitation.emailStatus === "failed"
+						? { description: "The invitation email is not sent." }
+						: undefined,
+				);
 			},
 			onError: (error) => toast.error(error.message),
 		}),

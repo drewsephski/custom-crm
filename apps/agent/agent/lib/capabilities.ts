@@ -1,9 +1,7 @@
 import "@crm/env/load";
 
-import { db } from "@crm/db";
 import { blobEnabled } from "@crm/db/blob";
-import { readContextDevKey } from "@crm/db/settings";
-import { forEachOrganization } from "./organizations";
+import { CONTEXT } from "./context-config";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
@@ -11,7 +9,7 @@ export const CONTEXT_DEV_PEOPLE = "CONTEXT_DEV_PEOPLE";
 
 export const CONTEXT_DEV_SEARCH = "CONTEXT_DEV_SEARCH";
 
-export const CONTEXT_DEV_SOURCE = "Context.dev key (Settings → General)";
+export const PERPLEXITY = "PERPLEXITY_API_KEY";
 
 export type Capability = {
 	readonly id: string;
@@ -21,62 +19,38 @@ export type Capability = {
 	readonly from: string;
 };
 
-export async function contextDevKey(): Promise<string | null> {
-	try {
-		return await readContextDevKey(db);
-	} catch (error) {
-		console.error(
-			`[agent] could not read the Context.dev key from the database: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-
-		return null;
-	}
-}
-
-export async function capabilities(): Promise<readonly Capability[]> {
-	return capabilitiesFrom(await contextDevKey());
-}
-
-export function capabilitiesFrom(
-	contextDev: string | null,
-): readonly Capability[] {
-	const fromEnv = (id: string) => ({
+function fromEnv(variable: string, id: string = variable) {
+	return {
 		id,
-		from: id,
-		enabled: Boolean(process.env[id]?.trim()),
-	});
+		from: variable,
+		enabled: Boolean(process.env[variable]?.trim()),
+	};
+}
 
+export function capabilities(): readonly Capability[] {
 	return [
 		{
-			...fromEnv("PERPLEXITY_API_KEY"),
+			...fromEnv(PERPLEXITY),
 			label: "Web research",
 			gives:
 				"open-web context with citations, and the search that finds a LinkedIn slug in the first place",
 		},
 		{
-			id: CONTEXT_DEV,
-			from: "Settings → General",
+			...fromEnv(CONTEXT.keyVariable, CONTEXT_DEV),
 			label: "Company brand data",
 			gives: "a company's logo, industry, location and socials from its domain",
-			enabled: contextDev !== null,
 		},
 		{
-			id: CONTEXT_DEV_PEOPLE,
-			from: "Settings → General",
+			...fromEnv(CONTEXT.keyVariable, CONTEXT_DEV_PEOPLE),
 			label: "LinkedIn",
 			gives:
 				"a person read back from a LinkedIn URL you already hold — their real name, bio, current title and employer, every earlier role with its dates, their education and their other public profiles, all self-reported and so authoritative on identity",
-			enabled: contextDev !== null,
 		},
 		{
-			id: CONTEXT_DEV_SEARCH,
-			from: "Settings → General",
+			...fromEnv(CONTEXT.keyVariable, CONTEXT_DEV_SEARCH),
 			label: "Web search",
 			gives:
 				"open-web search results with the text of each page, through research_person when Perplexity is not set. You read the pages yourself and cite the URL behind every claim",
-			enabled: contextDev !== null,
 		},
 		{
 			id: "BLOB_READ_WRITE_TOKEN",
@@ -89,8 +63,8 @@ export function capabilitiesFrom(
 	];
 }
 
-export async function enabled(id: string): Promise<boolean> {
-	return (await capabilities()).some(
+export function enabled(id: string): boolean {
+	return capabilities().some(
 		(capability) => capability.id === id && capability.enabled,
 	);
 }
@@ -101,41 +75,33 @@ export type UnavailableCapability = {
 	reason: string;
 };
 
-export function unavailable(env: string): UnavailableCapability {
+export function unavailable(id: string): UnavailableCapability {
+	const label =
+		capabilities().find((capability) => capability.id === id)?.label ??
+		"That source";
+
 	return {
 		ok: false,
 		configured: false,
 		reason:
-			`This install has no ${env}, so that source is unavailable. This is not a failure and retrying will not help — ` +
+			`${label} is not configured on this install, so that source is unavailable. This is not a failure and retrying will not help — ` +
 			"use what the CRM already knows, and say in your write-up what you could not check.",
 	};
 }
 
-const WORKSPACE_CAPABILITIES: ReadonlySet<string> = new Set([
-	CONTEXT_DEV,
-	CONTEXT_DEV_PEOPLE,
-	CONTEXT_DEV_SEARCH,
-]);
-
-export function bootLines(keyed: number, workspaces: number): string[] {
-	return capabilitiesFrom(null).map((capability) => {
-		if (!WORKSPACE_CAPABILITIES.has(capability.id)) {
-			return `[agent] ${capability.enabled ? "on " : "off"}  ${capability.label} (${capability.from})`;
-		}
-		return `[agent] ${keyed > 0 ? "on " : "off"}  ${capability.label} (${capability.from}, ${keyed} of ${workspaces} workspaces)`;
-	});
-}
-
-export async function logCapabilities(): Promise<void> {
-	const keys = await forEachOrganization("read the Context.dev key", () =>
-		contextDevKey(),
+export function bootLines(): string[] {
+	return capabilities().map(
+		(capability) =>
+			`[agent] ${capability.enabled ? "on " : "off"}  ${capability.label} (${capability.from})`,
 	);
-	const keyed = keys.filter((key) => key !== null).length;
-	for (const line of bootLines(keyed, keys.length)) console.log(line);
 }
 
-export async function capabilitiesMarkdown(): Promise<string> {
-	return markdownFor(await capabilities());
+export function logCapabilities(): void {
+	for (const line of bootLines()) console.log(line);
+}
+
+export function capabilitiesMarkdown(): string {
+	return markdownFor(capabilities());
 }
 
 export function markdownFor(all: readonly Capability[]): string {

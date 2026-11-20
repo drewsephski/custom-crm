@@ -27,7 +27,11 @@ import { logAuthRoute } from "./logging/request-logger.middleware";
 import { MailboxModule } from "./mailbox/mailbox.module";
 import { McpModule } from "./mcp/mcp.module";
 import { MicrosoftModule } from "./microsoft/microsoft.module";
+import { BrandPreviewClient } from "./onboarding/brand-preview.client";
+import { OnboardingRouter } from "./onboarding/onboarding.router";
+import { OnboardingService } from "./onboarding/onboarding.service";
 import { PipelineModule } from "./pipeline/pipeline.module";
+import { ResearchModule } from "./research/research.module";
 import { SavedViewsModule } from "./saved-views/saved-views.module";
 import { SearchModule } from "./search/search.module";
 import { SettingsModule } from "./settings/settings.module";
@@ -42,6 +46,7 @@ import { WorkspaceModule } from "./workspace/workspace.module";
 import { WorkspaceConfigModule } from "./workspace-config/workspace-config.module";
 
 @Module({
+	providers: [OnboardingRouter, OnboardingService, BrandPreviewClient],
 	imports: [
 		LoggingModule,
 		ConfigModule.forRoot({
@@ -75,6 +80,7 @@ import { WorkspaceConfigModule } from "./workspace-config/workspace-config.modul
 		McpModule,
 		SyncModule,
 		SettingsModule,
+		ResearchModule,
 		WorkspaceModule,
 		PipelineModule,
 		WorkspaceConfigModule,

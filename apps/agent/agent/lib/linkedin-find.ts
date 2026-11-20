@@ -1,5 +1,6 @@
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
+import { linkedinProfileUrl, linkedinSlug } from "./linkedin";
 import { namesMatch, normalise } from "./names";
 import { type Person, personByProfileUrl } from "./people";
 
@@ -18,17 +19,6 @@ export type LinkedinCandidate = {
 	worksAtCompany: boolean | null;
 };
 
-const PROFILE_SLUG = /linkedin\.com\/in\/([^/?#\s]+)/i;
-
-export function profileSlug(url: string): string | null {
-	const slug = PROFILE_SLUG.exec(url)?.[1];
-	return slug ? decodeURIComponent(slug).toLowerCase() : null;
-}
-
-export function profileUrlOf(slug: string): string {
-	return `https://www.linkedin.com/in/${slug}`;
-}
-
 export function guessedSlugs(lookup: LinkedinLookup): string[] {
 	const first = normalise(lookup.firstName);
 	const last = normalise(lookup.lastName);
@@ -42,7 +32,7 @@ export function searchedSlugs(
 ): string[] {
 	const last = normalise(lookup.lastName);
 	return results.flatMap((result) => {
-		const slug = result.url ? profileSlug(result.url) : null;
+		const slug = linkedinSlug(result.url);
 		if (!slug || !last) return [];
 		const named =
 			normalise(slug).includes(last) ||
@@ -105,7 +95,7 @@ export function candidateFrom(
 }
 
 async function searchLinkedin(query: string) {
-	const api = await contextDev();
+	const api = contextDev();
 	if (!api) return [];
 	try {
 		const response = await api.web.search({
@@ -133,7 +123,7 @@ export async function findLinkedinProfiles(
 
 	const read = await Promise.all(
 		slugs.map(async (slug) => {
-			const url = profileUrlOf(slug);
+			const url = linkedinProfileUrl(slug);
 			const match = await personByProfileUrl(url);
 			return match.outcome === "found"
 				? candidateFrom(match.person, lookup, url)

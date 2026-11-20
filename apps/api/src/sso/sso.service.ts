@@ -1,4 +1,5 @@
 import { auth } from "@crm/auth/auth";
+import { emailEnabled } from "@crm/auth/email";
 import {
 	isEmailPasswordEnabled,
 	isGoogleConfigured,
@@ -142,6 +143,7 @@ export class SsoService {
 			google: isGoogleConfigured(),
 			microsoft: isMicrosoftConfigured(),
 			emailPassword: isEmailPasswordEnabled(),
+			magicLink: emailEnabled(),
 			providers: rows.map((row) => ({
 				providerId: row.providerId,
 				name: ssoProviderName(row.providerId),

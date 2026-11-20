@@ -7,7 +7,7 @@ import {
 	UsersIcon,
 } from "lucide-react";
 import Image from "next/image";
-import { BuiltWith } from "../built-with";
+import { SAMPLE_WORKSPACE } from "./companies";
 import { CompaniesList, CompaniesPage } from "./companies-page";
 import { CompanyDrawer, CompanySheet } from "./company-sheet";
 
@@ -48,8 +48,6 @@ export function ProductShot() {
 					<CompanyDrawer />
 				</div>
 			</div>
-
-			<BuiltWith />
 		</section>
 	);
 }
@@ -63,7 +61,7 @@ function AppHeader() {
 				</span>
 				<span className="mx-1 h-5 w-px shrink-0" />
 				<span className="line-clamp-1 font-medium text-sm/[142%]">
-					Comp AI CRM
+					{SAMPLE_WORKSPACE.name}
 				</span>
 			</div>
 
