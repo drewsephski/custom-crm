@@ -57,7 +57,7 @@ async function create(
 	} catch (error) {
 		fail([
 			`Could not reach the server at ${new URL(target).host}.`,
-			"Is Postgres running?  docker compose up -d",
+			"Is the server in TEST_DATABASE_URL running and reachable?",
 			"",
 			error instanceof Error ? error.message : String(error),
 		]);
