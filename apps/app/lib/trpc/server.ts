@@ -13,14 +13,18 @@ import { makeQueryClient } from "./query-client";
 
 export const getServerQueryClient = cache(makeQueryClient);
 
-export function getServerTrpcClient(): TRPCClient<AppRouter> {
+export function getServerTrpcClient(scope?: {
+	cookie: string;
+	workspace: string;
+}): TRPCClient<AppRouter> {
 	return createTRPCClient<AppRouter>({
 		links: [
 			httpBatchLink({
 				url: `${API_URL}/api/trpc`,
 				headers: async () => {
-					const cookie = (await cookies()).toString();
-					const workspace = (await headers()).get(WORKSPACE_HEADER);
+					const cookie = scope?.cookie ?? (await cookies()).toString();
+					const workspace =
+						scope?.workspace ?? (await headers()).get(WORKSPACE_HEADER);
 					return {
 						...(cookie && { cookie }),
 						...(workspace && { [WORKSPACE_HEADER]: workspace }),

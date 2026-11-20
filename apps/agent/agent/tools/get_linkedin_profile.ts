@@ -33,7 +33,7 @@ export default defineTool({
 			if (!charge.ok) return { found: false as const, reason: charge.reason };
 
 			const requestedUrl = `https://www.linkedin.com/in/${slug}`;
-			const result = await personByProfileUrl(requestedUrl);
+			const result = await personByProfileUrl(requestedUrl, contactId);
 
 			if (result.outcome !== "found") {
 				return { found: false as const, reason: result.reason };

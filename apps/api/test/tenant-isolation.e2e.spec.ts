@@ -258,6 +258,30 @@ afterAll(async () => {
 	});
 });
 
+it("scopes research stream revisions to an authorized record and workspace", async () => {
+	const input = { companyId: fixtures.northstarCompany };
+	const read = (user: string, slug: string) =>
+		query(user, "research.revision", input, slug);
+	const before = dataOf(await read(USERS.northstarOwner, NORTHSTAR.slug));
+	await runInTenant(NORTHSTAR.id, () =>
+		db.researchResult.create({
+			data: {
+				organizationId: NORTHSTAR.id,
+				...input,
+				task: "brand",
+				provider: "context.dev",
+				operation: "brand.retrieve",
+				requestKey: idOf("revision"),
+			},
+		}),
+	);
+	expect(dataOf(await read(USERS.northstarOwner, NORTHSTAR.slug))).not.toEqual(
+		before,
+	);
+	expect((await read(USERS.harborOwner, HARBOR.slug)).status).toBe(404);
+	expect((await read(USERS.harborOwner, NORTHSTAR.slug)).status).toBe(403);
+});
+
 describe("the database boundary", () => {
 	it("shows each workspace only its own rows", async () => {
 		const seen = await runInTenant(NORTHSTAR.id, () =>

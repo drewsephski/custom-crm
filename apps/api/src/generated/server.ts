@@ -29,7 +29,7 @@ import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOut
 import { mcpListOutput, mcpGetInput, mcpGetOutput, mcpToolsInput, mcpToolsOutput, mcpStartInput, mcpStartOutput, mcpReconnectInput, mcpReconnectOutput, mcpDisconnectInput, mcpDisconnectOutput, mcpReviewToolsInput, mcpReviewToolsOutput } from "../mcp/mcp.contracts";
 import { stateInput, stateOutput, saveBusinessTypeInput, progressOutput, saveGoalsInput, saveBusinessInput, saveCustomizeInput, lookupBrandInput, brandOutput, finishOutput } from "../onboarding/onboarding.contracts";
 import { pipelineOutput } from "../pipeline/pipeline.contracts";
-import { researchForRecordInput } from "../workspace/../research/research.contracts";
+import { researchForRecordInput } from "@crm/validation/research-result";
 import { researchForRecordOutput, researchUsageOutput, researchDecideFindingInput, researchDecideFindingOutput } from "../research/research.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
 import { agentModelOutput, modelCatalogOutput, setAgentModelInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
@@ -678,6 +678,10 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   research: t.router({
+    revision: publicProcedure
+      .input(researchForRecordInput)
+      .output(z.string())
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     forRecord: publicProcedure
       .input(researchForRecordInput)
       .output(researchForRecordOutput)
@@ -842,10 +846,6 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   workspace: t.router({
-    researchLive: publicProcedure
-      .input(researchForRecordInput)
-      .output(workspaceLiveOutput)
-      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     membersLive: publicProcedure
       .output(workspaceLiveOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),

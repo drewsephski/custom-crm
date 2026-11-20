@@ -1,21 +1,10 @@
 import { ResearchReview, ResearchStatus } from "@crm/db";
-import { RESEARCH_FINDING_STATES } from "@crm/validation/research-result";
+import {
+	RESEARCH_FINDING_STATES,
+	type researchForRecordInput,
+} from "@crm/validation/research-result";
 import { z } from "zod";
 import { RESEARCH_REFUSALS } from "./research-copy";
-
-const hasExactlyOneRecord = (input: {
-	companyId?: string;
-	contactId?: string;
-}) => [input.companyId, input.contactId].filter(Boolean).length === 1;
-
-export const researchForRecordInput = z
-	.object({
-		companyId: z.string().min(1).optional(),
-		contactId: z.string().min(1).optional(),
-	})
-	.refine(hasExactlyOneRecord, {
-		message: "Choose exactly one company or contact.",
-	});
 
 export type ResearchForRecordInput = z.infer<typeof researchForRecordInput>;
 

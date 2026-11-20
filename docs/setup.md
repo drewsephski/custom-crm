@@ -48,7 +48,10 @@ function and Realtime. `.neon` pins the project and branch and is not committed.
   `-pooler` for Prisma's CLI, so migrations use the direct host of the same
   database. Set DATABASE_URL_UNPOOLED to provide direct credentials. Prisma checks the endpoint and database against DATABASE_URL. Tenant scope is transaction-local
   (`docs/tenancy.md`), so the pooler's transaction mode is safe.
-- **Live research uses Neon Realtime.** The API seals a record query for the signed-in member. Each query checks current membership. The record panel also polls the authenticated API.
+- **Live research uses server-sent events.** Neon Realtime rejects queries against the research table because PostgreSQL enforces row security.
+  Each stream checks the selected record through authenticated tRPC. Every check validates current membership.
+  The stream signals a change, and the panel fetches the findings through tRPC.
+  The panel polls during reconnection. Research streams require no Realtime secret.
 - **Every query pays the network round trip.** A laptop far from the region is
   slow: 72 migrations take about 110 seconds at a 90 ms round trip.
 - **Function triggers are disabled until `CRON_TARGET_URL` is set**, so Vercel

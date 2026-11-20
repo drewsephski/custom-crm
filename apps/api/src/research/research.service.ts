@@ -106,6 +106,16 @@ export class ResearchService {
 
 	constructor(@InjectDatabase() private readonly db: Db) {}
 
+	async revision(input: ResearchForRecordInput): Promise<string> {
+		await this.requireRecord(input);
+		const revision = await this.db.researchResult.aggregate({
+			where: input,
+			_max: { updatedAt: true },
+			_count: true,
+		});
+		return `${revision._count}/${revision._max.updatedAt?.getTime() ?? 0}`;
+	}
+
 	async forRecord(
 		input: ResearchForRecordInput,
 		now: Date = new Date(),

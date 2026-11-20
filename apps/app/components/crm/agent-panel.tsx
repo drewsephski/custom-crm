@@ -93,6 +93,7 @@ export function AgentPanel({ record }: { record: AgentRecord }) {
 		<>
 			{record.kind !== "deal" && (
 				<ResearchResults
+					key={`${record.kind}/${record.id}`}
 					record={recordFilter(record)}
 					refreshMs={WORKING_POLL_MS}
 				/>

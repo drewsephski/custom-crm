@@ -54,7 +54,7 @@ export type ResearchSettings = {
 		jitter: number;
 	};
 	dedup: { pollMs: number; maxWaitMs: number };
-	reservation: { ttlMs: number; reconcileEveryMs: number };
+	reservation: { ttlMs: number; batchSize: number };
 	collapse: { refusalMs: number; cacheHitMs: number };
 	preview: {
 		maxAttempts: number;
@@ -149,7 +149,7 @@ export const RESEARCH = {
 
 	reservation: {
 		ttlMs: RESEARCH_BUDGET.reservationTtlMs,
-		reconcileEveryMs: MINUTE_MS,
+		batchSize: 64,
 	},
 
 	collapse: { refusalMs: 15 * MINUTE_MS, cacheHitMs: MINUTE_MS },

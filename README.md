@@ -136,10 +136,10 @@ this one.
 
 **Research is metered in provider credits.** Each workspace has a monthly allowance and
 the install has a monthly ceiling. A request reserves credits before the provider is
-called and settles with the amount the provider reports. Identical requests are
+called and settles with the amount the provider reports. Interrupted calls keep their estimated charge. The next lookup releases expired requests for retry. Identical requests are
 deduplicated for cached brand and profile lookups within the current workspace, and a request
 that does not fit is refused with a plain message. Company brand and answer results include their sources, and a finding that differs from what a person typed becomes a suggestion to
-accept or dismiss. Neon Realtime signals changes. The record panel also polls the authenticated API.
+accept or dismiss. The server streams research changes after checking workspace membership. The panel polls the authenticated API during reconnection.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
 a shell — the difference between a tool-caller and something that can keep a dossier,
@@ -197,7 +197,7 @@ A [Turborepo](https://turborepo.dev) monorepo on [Bun](https://bun.com), deploye
 | **Data** | [Prisma](https://prisma.io) · Postgres on [Neon](https://neon.tech), one branch per environment · optional Redis ([Upstash](https://upstash.com)) |
 | **Auth** | [Better Auth](https://better-auth.com) — Google and email sign-in links; Microsoft or your own IdP are optional |
 | **Files** | Neon Object Storage (S3 API) — mirrors logos and profile pictures under a workspace-scoped key. Vercel Blob is the fallback |
-| **Live updates** | Postgres `LISTEN/NOTIFY` through an API event stream for research status; Neon Realtime for the members list |
+| **Live updates** | Server-sent events for research status and Neon Realtime for the members list |
 | **Schedules** | Vercel crons, or a Neon Function that relays the same schedules |
 | **Tooling** | [Biome](https://biomejs.dev) · TypeScript everywhere |
 

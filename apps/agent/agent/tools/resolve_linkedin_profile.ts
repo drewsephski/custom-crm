@@ -2,7 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { CONTEXT_DEV_PEOPLE, enabled, unavailable } from "../lib/capabilities";
 import { CONTEXT } from "../lib/context-config";
-import { spend } from "../lib/focus";
+import { currentFocus, spend } from "../lib/focus";
 import { verdictFor } from "../lib/identity";
 import { personByClues } from "../lib/people";
 import { inSessionTenant } from "../lib/tenant-scope";
@@ -38,13 +38,16 @@ export default defineTool({
 			const charge = spend(CONTEXT.people.enrichCost);
 			if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-			const result = await personByClues({
-				email,
-				firstName: firstName ?? null,
-				lastName: lastName ?? null,
-				companyName,
-				companyDomain,
-			});
+			const result = await personByClues(
+				{
+					email,
+					firstName: firstName ?? null,
+					lastName: lastName ?? null,
+					companyName,
+					companyDomain,
+				},
+				currentFocus().contactId ?? undefined,
+			);
 
 			if (result.outcome !== "found") {
 				return { found: false as const, reason: result.reason };

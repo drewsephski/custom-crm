@@ -1,3 +1,4 @@
+import { researchForRecordInput } from "@crm/validation/research-result";
 import { Inject } from "@nestjs/common";
 import {
 	Ctx,
@@ -7,14 +8,13 @@ import {
 	Router,
 	UseMiddlewares,
 } from "nestjs-trpc";
-import type { z } from "zod";
+import { z } from "zod";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
 	researchDecideFindingInput,
 	researchDecideFindingOutput,
-	researchForRecordInput,
 	researchForRecordOutput,
 	researchUsageOutput,
 } from "./research.contracts";
@@ -26,6 +26,11 @@ export class ResearchRouter {
 	constructor(
 		@Inject(ResearchService) private readonly research: ResearchService,
 	) {}
+
+	@Query({ input: researchForRecordInput, output: z.string() })
+	async revision(@Input() input: z.infer<typeof researchForRecordInput>) {
+		return this.research.revision(input);
+	}
 
 	@Query({
 		input: researchForRecordInput,

@@ -1,15 +1,11 @@
 "use client";
 import { Button } from "@crm/ui/components/button";
 import { useMountEffect } from "@crm/ui/hooks/use-mount-effect";
-import {
-	createRealtimeClient,
-	type SealedLiveQuery,
-} from "@neon/realtime/client";
-import { RealtimeProvider, useLiveQuery } from "@neon/realtime-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
 import { useState } from "react";
+import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
-import type { RouterOutputs } from "@/lib/trpc/types";
 
 export function ResearchResults({
 	record,
@@ -19,14 +15,31 @@ export function ResearchResults({
 	refreshMs: number;
 }) {
 	const trpc = useTRPC();
-	const live = useQuery(trpc.workspace.researchLive.queryOptions(record));
+	const cache = useCrmCache();
+	const { slug } = useParams<{ slug: string }>();
+	const [connected, setConnected] = useState(false);
 	const results = useQuery({
 		...trpc.research.forRecord.queryOptions(record),
-		refetchInterval: refreshMs,
+		refetchInterval: connected ? false : refreshMs,
+	});
+	useMountEffect(() => {
+		const params = new URLSearchParams({ workspace: slug });
+		if (record.companyId) params.set("companyId", record.companyId);
+		if (record.contactId) params.set("contactId", record.contactId);
+		const stream = new EventSource(`/api/research/events?${params}`);
+		stream.onopen = () => setConnected(true);
+		stream.onerror = () => setConnected(false);
+		stream.onmessage = () => void results.refetch();
+		return () => stream.close();
 	});
 	const decision = useMutation(
 		trpc.research.decideFinding.mutationOptions({
-			onSuccess: () => results.refetch(),
+			onSuccess: async ({ record, applied }) => {
+				await Promise.all([
+					results.refetch(),
+					record && applied ? cache[record.kind](record.id) : undefined,
+				]);
+			},
 		}),
 	);
 	if (results.error)
@@ -34,24 +47,19 @@ export function ResearchResults({
 
 	return (
 		<section aria-label="Research results" className="grid gap-3 p-3">
-			{live.data && (
-				<LiveResearch
-					key={live.data.url}
-					live={live.data}
-					refresh={async () => {
-						const next = await live.refetch();
-						if (!next.data) throw new Error("Live updates unavailable");
-						return next.data.sealedQuery;
-					}}
-					update={() => void results.refetch()}
-				/>
-			)}
 			{results.data?.rows.map((row) => (
 				<article key={row.id} className="grid gap-2">
 					<strong>
 						{row.task} · {row.status.toLowerCase()}
 					</strong>
 					{row.error && <p role="status">{row.error}</p>}
+					{row.match && (
+						<p>
+							{row.match.score === null
+								? "No matching profile"
+								: `Provider match score: ${row.match.score}/100`}
+						</p>
+					)}
 					{row.summary && <p>{row.summary}</p>}
 					{row.findings.map((f) => (
 						<div key={f.field}>
@@ -88,33 +96,4 @@ export function ResearchResults({
 			{decision.error && <p role="alert">{decision.error.message}</p>}
 		</section>
 	);
-}
-
-type Signal = { id: string; state: string };
-type SubscriptionProps = {
-	refresh: () => Promise<SealedLiveQuery<Signal>>;
-	update: () => void;
-};
-function LiveResearch({
-	live,
-	refresh,
-	update,
-}: SubscriptionProps & {
-	live: NonNullable<RouterOutputs["workspace"]["researchLive"]>;
-}) {
-	const [client] = useState(() => createRealtimeClient({ url: live.url }));
-	return (
-		<RealtimeProvider client={client}>
-			<Subscribe query={live.sealedQuery} refresh={refresh} update={update} />
-		</RealtimeProvider>
-	);
-}
-function Subscribe({
-	query,
-	refresh,
-	update,
-}: SubscriptionProps & { query: SealedLiveQuery<Signal> }) {
-	const { utils } = useLiveQuery(query, { refreshQuery: refresh });
-	useMountEffect(() => utils.onUpdate(update));
-	return null;
 }

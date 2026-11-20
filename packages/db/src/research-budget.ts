@@ -69,23 +69,20 @@ export async function workspaceCreditUsage(
 	now: Date = new Date(),
 ): Promise<ResearchCreditUsage> {
 	const start = researchPeriodStart(now);
-	const reservedSince = new Date(
-		now.getTime() - RESEARCH_BUDGET.reservationTtlMs,
-	);
-
 	const [settled, open] = await Promise.all([
 		tx.researchResult.aggregate({
 			where: { createdAt: { gte: start }, settledAt: { not: null } },
 			_sum: { creditsUsed: true },
 		}),
 		tx.researchResult.aggregate({
-			where: { settledAt: null, createdAt: { gte: reservedSince } },
-			_sum: { creditsReserved: true },
+			where: { settledAt: null, createdAt: { gte: start } },
+			_sum: { creditsReserved: true, creditsUsed: true },
 		}),
 	]);
 
 	const used = settled._sum.creditsUsed ?? 0;
-	const reserved = open._sum.creditsReserved ?? 0;
+	const reserved =
+		(open._sum.creditsReserved ?? 0) + (open._sum.creditsUsed ?? 0);
 	const remaining = Math.max(0, limit - used - reserved);
 
 	return {

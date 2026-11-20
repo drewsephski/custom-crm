@@ -41,7 +41,10 @@ export async function findPortrait(
 			const charge = spend(CONTEXT.people.enrichCost);
 			if (!charge.ok) return { found: false, tried, reason: charge.reason };
 
-			const result = await personByProfileUrl(linkedinProfileUrl(slug));
+			const result = await personByProfileUrl(
+				linkedinProfileUrl(slug),
+				subject.id,
+			);
 			if (result.outcome === "found" && result.person.photoUrl) {
 				return {
 					found: true,

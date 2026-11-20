@@ -22,8 +22,10 @@ import {
 } from "./brand-evidence";
 import { classifyFailure } from "./failure";
 import { createGate, createThrottle } from "./limits";
+import { personEvidence, providerPerson } from "./person-evidence";
 import { creditMetadata, creditsFromHeaders } from "./provider";
 import { RESEARCH, type ResearchOperation } from "./research-config";
+import { recoverExpiredReservations } from "./reservations";
 import { backoffMs } from "./retry";
 
 export const researchUser = new AsyncLocalStorage<string | null>();
@@ -54,6 +56,24 @@ const tasks = {
 	"web.extract": "web-extract",
 	"web.answers": "answer",
 } as const;
+
+function requestKeyFor({ key, target }: Options) {
+	return createHash("sha256")
+		.update(
+			target ? JSON.stringify([key, target.contactId, target.companyId]) : key,
+		)
+		.digest("hex");
+}
+
+function evidenceFor<T>(options: Options, value: T) {
+	if (options.domain)
+		return brandEvidence(providerBrand.parse(value), options.domain);
+	if (options.operation === "web.answers")
+		return answerEvidence(sourcedAnswer.parse(value));
+	if (options.operation === "people.enrich" && options.target?.contactId)
+		return personEvidence(providerPerson.parse(value));
+	return {};
+}
 
 export async function metered<T>(
 	options: Options,
@@ -87,9 +107,7 @@ export async function metered<T>(
 							operation: options.operation,
 							provider: RESEARCH.provider,
 							task: tasks[options.operation],
-							requestKey: createHash("sha256")
-								.update(options.key)
-								.digest("hex"),
+							requestKey: requestKeyFor(options),
 							status: "REFUSED",
 							error: cause.message,
 							settledAt: new Date(),
@@ -141,9 +159,7 @@ export function cachedLookup<T>() {
 			const result = await existing.value;
 			if (org) {
 				const now = new Date();
-				const evidence = options.domain
-					? brandEvidence(providerBrand.parse(result), options.domain)
-					: undefined;
+				const evidence = evidenceFor(options, result);
 				await db.researchResult.create({
 					data: {
 						organizationId: org,
@@ -151,7 +167,7 @@ export function cachedLookup<T>() {
 						provider: RESEARCH.provider,
 						operation: options.operation,
 						task: tasks[options.operation],
-						requestKey: createHash("sha256").update(options.key).digest("hex"),
+						requestKey: requestKeyFor(options),
 						status: "COMPLETE",
 						cacheHit: true,
 						settledAt: now,
@@ -189,10 +205,15 @@ async function account<T>(
 	const organizationId = previewUser ? null : currentOrganizationId();
 	const estimate =
 		options.estimate ?? RESEARCH.operations[operation].estimateCredits;
-	const period = researchPeriod();
+	const now = new Date();
+	const period = researchPeriod(now);
 	const provider = RESEARCH.provider;
 	const where = { period_provider: { period, provider } };
-	const requestKey = createHash("sha256").update(options.key).digest("hex");
+	const requestKey = requestKeyFor(options);
+	await recoverExpiredReservations(
+		now,
+		organizationId ? { organizationId, operation, requestKey } : undefined,
+	);
 	const reserve = () =>
 		db.$transaction(async (tx) => {
 			await tx.platformResearchUsage.upsert({
@@ -229,7 +250,8 @@ async function account<T>(
 						operation,
 						provider,
 						requestKey,
-						creditsReserved: estimate,
+						createdAt: now,
+						creditsUsed: estimate,
 						attempts: 1,
 					},
 					select: { id: true },
@@ -238,7 +260,7 @@ async function account<T>(
 			}
 			await tx.platformResearchUsage.update({
 				where,
-				data: { creditsReserved: { increment: estimate } },
+				data: { creditsUsed: { increment: estimate } },
 			});
 			return id;
 		});
@@ -247,7 +269,7 @@ async function account<T>(
 		: await reserve();
 	let used = estimate;
 	let status: "COMPLETE" | "PARTIAL" | "FAILED" = "FAILED";
-	let evidence: ReturnType<typeof brandEvidence | typeof answerEvidence> = {};
+	let evidence: ReturnType<typeof evidenceFor> = {};
 	try {
 		const pending = call();
 		const packet =
@@ -257,10 +279,7 @@ async function account<T>(
 			creditMetadata.parse(result) ??
 			creditsFromHeaders(packet?.response.headers) ??
 			estimate;
-		if (options.domain)
-			evidence = brandEvidence(providerBrand.parse(result), options.domain);
-		if (operation === "web.answers")
-			evidence = answerEvidence(sourcedAnswer.parse(result));
+		evidence = evidenceFor(options, result);
 		status = "partial" in evidence && evidence.partial ? "PARTIAL" : "COMPLETE";
 		return result;
 	} catch (cause) {
@@ -273,16 +292,14 @@ async function account<T>(
 			db.$transaction(async (tx) => {
 				await tx.platformResearchUsage.update({
 					where,
-					data: {
-						creditsReserved: { decrement: estimate },
-						creditsUsed: { increment: used },
-					},
+					data: { creditsUsed: { increment: used - estimate } },
 				});
 				if (id)
-					await tx.researchResult.update({
+					await tx.researchResult.updateMany({
 						where: { id },
 						data: {
 							...evidence,
+							error: null,
 							status,
 							creditsUsed: used,
 							creditsReserved: 0,

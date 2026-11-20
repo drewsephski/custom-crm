@@ -1,5 +1,19 @@
 import { z } from "zod";
 
+const hasExactlyOneRecord = (input: {
+	companyId?: string;
+	contactId?: string;
+}) => [input.companyId, input.contactId].filter(Boolean).length === 1;
+
+export const researchForRecordInput = z
+	.object({
+		companyId: z.string().min(1).optional(),
+		contactId: z.string().min(1).optional(),
+	})
+	.refine(hasExactlyOneRecord, {
+		message: "Choose exactly one company or contact.",
+	});
+
 export const RESEARCH_PROVIDERS = ["context.dev", "perplexity"] as const;
 
 export type ResearchProvider = (typeof RESEARCH_PROVIDERS)[number];

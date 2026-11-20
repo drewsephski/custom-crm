@@ -30,7 +30,7 @@ export default defineTool({
 			const charge = spend(2);
 			if (!charge.ok) return { found: false as const, reason: charge.reason };
 
-			const result = await personByProfileUrl(profileRef.profileUrl);
+			const result = await personByProfileUrl(profileRef.profileUrl, contactId);
 			if (result.outcome !== "found") {
 				return { found: false as const, reason: result.reason };
 			}

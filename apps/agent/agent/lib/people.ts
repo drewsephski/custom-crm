@@ -137,6 +137,7 @@ const candidateShape = z.object({
 
 export async function personByProfileUrl(
 	profileUrl: string,
+	contactId?: string,
 ): Promise<PersonMatch> {
 	const api = contextDev();
 	if (!api) {
@@ -145,7 +146,11 @@ export async function personByProfileUrl(
 
 	try {
 		const response = await cachedPerson(
-			{ operation: "people.enrich", key: profileUrl },
+			{
+				operation: "people.enrich",
+				key: profileUrl,
+				target: contactId ? { contactId } : undefined,
+			},
 			() =>
 				api.people.enrich({
 					social_urls: [profileUrl],
@@ -169,6 +174,7 @@ export type IdentityClues = {
 
 export async function personByClues(
 	clues: IdentityClues,
+	contactId?: string,
 ): Promise<PersonMatch> {
 	const api = contextDev();
 	if (!api) {
@@ -191,7 +197,11 @@ export async function personByClues(
 		return matchFrom(
 			(
 				await cachedPerson(
-					{ operation: "people.enrich", key: JSON.stringify(params) },
+					{
+						operation: "people.enrich",
+						key: JSON.stringify(params),
+						target: contactId ? { contactId } : undefined,
+					},
 					() => api.people.enrich(params),
 				)
 			).match,
