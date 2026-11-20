@@ -2,10 +2,13 @@ import "@crm/env/load";
 
 import { db } from "@crm/db";
 import { readContextDevKey } from "@crm/db/settings";
+import { forEachOrganization } from "./organizations";
 
 export const CONTEXT_DEV = "CONTEXT_DEV";
 
 export const CONTEXT_DEV_PEOPLE = "CONTEXT_DEV_PEOPLE";
+
+export const CONTEXT_DEV_SEARCH = "CONTEXT_DEV_SEARCH";
 
 export const CONTEXT_DEV_SOURCE = "Context.dev key (Settings → General)";
 
@@ -67,6 +70,14 @@ export function capabilitiesFrom(
 			enabled: contextDev !== null,
 		},
 		{
+			id: CONTEXT_DEV_SEARCH,
+			from: "Settings → General",
+			label: "Web search",
+			gives:
+				"open-web search results with the text of each page, through research_person when Perplexity is not set. You read the pages yourself and cite the URL behind every claim",
+			enabled: contextDev !== null,
+		},
+		{
 			...fromEnv("BLOB_READ_WRITE_TOKEN"),
 			label: "Picture storage",
 			gives:
@@ -97,12 +108,27 @@ export function unavailable(env: string): UnavailableCapability {
 	};
 }
 
+const WORKSPACE_CAPABILITIES: ReadonlySet<string> = new Set([
+	CONTEXT_DEV,
+	CONTEXT_DEV_PEOPLE,
+	CONTEXT_DEV_SEARCH,
+]);
+
+export function bootLines(keyed: number, workspaces: number): string[] {
+	return capabilitiesFrom(null).map((capability) => {
+		if (!WORKSPACE_CAPABILITIES.has(capability.id)) {
+			return `[agent] ${capability.enabled ? "on " : "off"}  ${capability.label} (${capability.from})`;
+		}
+		return `[agent] ${keyed > 0 ? "on " : "off"}  ${capability.label} (${capability.from}, ${keyed} of ${workspaces} workspaces)`;
+	});
+}
+
 export async function logCapabilities(): Promise<void> {
-	for (const capability of await capabilities()) {
-		console.log(
-			`[agent] ${capability.enabled ? "on " : "off"}  ${capability.label} (${capability.from})`,
-		);
-	}
+	const keys = await forEachOrganization("read the Context.dev key", () =>
+		contextDevKey(),
+	);
+	const keyed = keys.filter((key) => key !== null).length;
+	for (const line of bootLines(keyed, keys.length)) console.log(line);
 }
 
 export async function capabilitiesMarkdown(): Promise<string> {

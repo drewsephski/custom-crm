@@ -14,13 +14,27 @@ export type DbScope = TenantScope | SystemScope;
 
 const ORGANIZATION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
-const UNSCOPED = Symbol("crm.unscoped");
+const UNSCOPED: unique symbol = Symbol.for("crm.unscoped");
 
 type StoredScope = DbScope | typeof UNSCOPED;
 
-const storage = new AsyncLocalStorage<StoredScope>();
+type TenancyState = {
+	storage: AsyncLocalStorage<StoredScope>;
+	testFallback: TenantScope | undefined;
+};
 
-let testFallback: TenantScope | undefined;
+declare global {
+	var crmTenancy: TenancyState | undefined;
+}
+
+globalThis.crmTenancy ??= {
+	storage: new AsyncLocalStorage<StoredScope>(),
+	testFallback: undefined,
+};
+
+const state: TenancyState = globalThis.crmTenancy;
+
+const storage = state.storage;
 
 export class TenancyError extends Error {
 	override readonly name = "TenancyError";
@@ -42,7 +56,7 @@ function tenantScope(organizationId: string): TenantScope {
 export function currentScope(): DbScope | undefined {
 	const stored = storage.getStore();
 	if (stored === UNSCOPED) return undefined;
-	return stored ?? testFallback;
+	return stored ?? state.testFallback;
 }
 
 export function currentOrganizationId(): string | undefined {
@@ -56,7 +70,7 @@ export function useTestFallbackTenant(organizationId: string | null): void {
 			"A fallback tenant exists only for the test suite. Production code must scope every query explicitly.",
 		);
 	}
-	testFallback = organizationId ? tenantScope(organizationId) : undefined;
+	state.testFallback = organizationId ? tenantScope(organizationId) : undefined;
 }
 
 export function requireOrganizationId(): string {

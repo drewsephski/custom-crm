@@ -43,6 +43,14 @@ results and cannot insert (the `organizationId` default is `crm_current_org()`,
 which is null, and the column is `NOT NULL`). `requireOrganizationId()` throws a
 `TenancyError` for code that needs the id explicitly.
 
+**One scope store per process.** Outside production, `client.ts` keeps the Prisma
+client on `globalThis.prisma` across hot reloads, and its adapter reads the scope
+through the `tenancy.ts` copy that created it. A reload loads a fresh copy of
+`tenancy.ts`. So the store lives on `globalThis.crmTenancy`, and every copy reads and
+writes the same one. A module-local store made every tenant query after an `eve dev`
+or `next dev` reload see no organization. `packages/db/test/tenancy-reload.spec.ts`
+holds this.
+
 **Always `await` inside the scope.** Prisma queries are lazy; a promise returned
 unawaited from `runInTenant` starts outside it and runs unscoped. `runInTenant` awaits
 for you — keep it that way.

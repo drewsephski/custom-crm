@@ -9,5 +9,16 @@ export const CONTEXT = {
 		enrichCost: 2,
 	},
 
+	search: {
+		results: 5,
+		deepResults: 10,
+		excerptChars: 2_000,
+	},
+
+	linkedinFind: {
+		searchResults: 10,
+		maxProfiles: 3,
+	},
+
 	avatarHosts: ["brand.dev", "licdn.com"],
 } as const;

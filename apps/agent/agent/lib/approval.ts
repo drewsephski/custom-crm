@@ -2,9 +2,13 @@ import {
 	type AgentPermissionMode,
 	agentPermissionMode,
 } from "@crm/validation/agent-permission";
-import type { Approval, ApprovalContext } from "eve/tools/approval";
+import type {
+	Approval,
+	ApprovalContext,
+	ApprovalStatus,
+} from "eve/tools/approval";
 import { APP_AUTH } from "./app-auth";
-import { attribute } from "./session-purpose";
+import { attribute, purposeOf } from "./session-purpose";
 
 export function isAutomated(session: {
 	auth: {
@@ -51,4 +55,14 @@ export function permissionModeOf(
 		.nullable()
 		.catch(null)
 		.parse(attribute(context, "permissionMode"));
+}
+
+export function chatAdditionApproval(context: ApprovalContext): ApprovalStatus {
+	if (purposeOf(context) !== "builder") {
+		return {
+			type: "denied",
+			reason: "Records are added only from a CRM chat, when the user asks.",
+		};
+	}
+	return permissionModeOf(context) === "manual" ? "user-approval" : "approved";
 }

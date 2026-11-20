@@ -215,7 +215,10 @@ states it in the session instructions, and gives tools a shared "not configured,
 retrying will not help" result — **checked before the research budget is charged**. A
 missing key removes a place to look. **Never an error, never throws.**
 
-**`capabilities()` is async** because the Context key is a row;
+**`capabilities()` is async** because the Context key is a row in each workspace's
+`AppSetting`. It reads inside the caller's tenant scope. The boot log runs outside any
+session, so `logCapabilities()` reads the key once per workspace through
+`forEachOrganization` and prints how many workspaces have one (`bootLines()`);
 `capabilitiesFrom()`/`markdownFor()` are the pure halves. `contextDevKey()` is the only
 resolver, and `lib/context-dev.ts` memoises its client on the key string.
 
@@ -226,6 +229,10 @@ resolver, and `lib/context-dev.ts` memoises its client on the key string.
   billable lookup costs: a brand lookup is 10 Context credits, a person enrich is
   20. Both charge 2, because the budget rations calls per contact and a session
   with a budget of 4 must still be able to make two of them.
+- **The budget is switched off for now.** `FOCUS.enforceBudget` in
+  `lib/focus-config.ts` is `false`, so `spend()` still counts units but never refuses.
+  Set it to `true` to ration vendor calls again. With it off, nothing caps how many
+  Context.dev calls one session makes.
 - `lib/tasks.ts` — `claimDue` leases with `FOR UPDATE SKIP LOCKED`.
 - **`schedules/dispatch.ts` is the only schedule and decides nothing.** "Every N
   minutes, the oldest ten contacts" belongs in a `dueAt`.
@@ -300,6 +307,36 @@ the backend factory** so it cannot be forgotten per session. Costs nothing —
 
 **Never give the sandbox `DATABASE_URL`.** CRM access is authored tools. A shell with
 credentials and network is exfiltration-shaped; with neither it is a text processor.
+
+## Chat research and adding records
+
+The private CRM chat (`builder` purpose, `CHAT` command) answers questions and may
+change the CRM in exactly one way: `add_to_crm`, when the user asks.
+
+- **Finding a person** starts with `find_linkedin_profile` (`lib/linkedin-find.ts`).
+  A web search index is fuzzy on names, so it searches LinkedIn only, adds the usual
+  vanity slugs (`first-last`, `firstlast`), reads at most
+  `CONTEXT.linkedinFind.maxProfiles` of them through Context.dev, and keeps only
+  profiles whose name matches. Each candidate says whether it works or worked at the
+  company the user named. `research_person` (Perplexity, or a Context.dev web search
+  when Perplexity is not set) is the fallback. A shared name is a question for the
+  user.
+- **`read_linkedin_profile`** reads a profile by URL or slug through Context.dev and
+  needs no email, unlike `get_linkedin_profile`, which checks a profile against an
+  address on a contact.
+- **`add_to_crm`** (`lib/crm-create.ts`) finds an existing contact by email or
+  LinkedIn URL and an existing company by domain or name, in the current workspace,
+  before it creates anything. New records are owned by the chat user, so the owner
+  membership trigger applies. It queues the same `agent-event`, `brand`,
+  `company-profile` and `identify` tasks the API queues for a rep's new record.
+  `chatAdditionApproval` asks the user in manual mode and approves in auto or
+  bypass. It denies research and team-agent sessions. It does not check the command
+  type: eve runs the approval again when the Approve click resumes the call, and
+  `builderCommandType` labels every input response `CREATE_AGENT`. A `CREATE_AGENT`
+  turn only calls `agent_builder`, which inherits no root tools. `execute` refuses
+  any session that is not a builder session.
+- **`web_fetch` stays limited** to links the user pasted and approved documentation.
+  Search results are read from the excerpts the search returns.
 
 ## Team-agent builder and runner
 
