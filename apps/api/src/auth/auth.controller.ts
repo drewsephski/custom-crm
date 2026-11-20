@@ -19,7 +19,7 @@ type CrmSession = UserSession<typeof auth>;
 
 @ApiTags("Auth")
 @ApiCookieAuth(SESSION_COOKIE_NAME)
-@Controller("auth")
+@Controller(["api/profile", "auth"])
 export class AuthController {
 	constructor(private readonly authService: AuthService) {}
 

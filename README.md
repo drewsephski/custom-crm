@@ -401,7 +401,7 @@ Vercel supplies `INTERNAL_API_URL` and `INTERNAL_AGENT_URL` through service bind
 Set `DATABASE_URL` and `BETTER_AUTH_SECRET` for the project. The production API build applies database migrations.
 Set `AGENT_BRIDGE_SECRET` for agent sessions and internal dispatch.
 Set `CRON_SECRET` for scheduled work. Leave Neon's cron relay disabled when Vercel runs these schedules.
-The API reference is at `/api/docs/`. The app checks workspace membership before forwarding Eve session requests.
+The API reference is at `/api/docs/`. The health check is at `/api/health`. The app checks workspace membership before forwarding Eve session requests.
 
 To test the services locally, use a development database and run `vercel dev --local` from the repository root.
 Set both public origins to the local Vercel address for this test.

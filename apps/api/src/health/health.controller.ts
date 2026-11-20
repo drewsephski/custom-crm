@@ -17,7 +17,7 @@ import { InjectDatabase } from "../database/database.constants";
 const SLOW_PROBE_MS = 250;
 
 @ApiTags("Health")
-@Controller("health")
+@Controller(["api/health", "health"])
 export class HealthController {
 	private readonly logger = new Logger(HealthController.name);
 

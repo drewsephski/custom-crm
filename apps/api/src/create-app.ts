@@ -39,7 +39,7 @@ export async function createApp(): Promise<NestExpressApplication> {
 
 	let restBridge: ((req: Request, res: Response) => Promise<void>) | undefined;
 	app.use(
-		REST_BRIDGE_PATH,
+		[REST_BRIDGE_PATH, "/rest"],
 		(req: Request, res: Response, next: NextFunction) => {
 			if (!restBridge) {
 				next();

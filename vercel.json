@@ -79,13 +79,7 @@
 			}
 		},
 		{
-			"source": "/:area(rest|auth)/:path*",
-			"destination": {
-				"service": "api"
-			}
-		},
-		{
-			"source": "/:endpoint(health|openapi\\.json)",
+			"source": "/openapi.json",
 			"destination": {
 				"service": "api"
 			}
