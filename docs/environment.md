@@ -92,9 +92,10 @@ production.
 
 ## Where things are
 
-- **`API_URL`** (`:3001`) mints session cookies and serves `/api/auth/*`;
-  `next.config.ts` republishes it as `NEXT_PUBLIC_API_URL`, so one variable does both
-  sides. `BETTER_AUTH_URL` is a legacy fallback.
+- **`API_URL`** is the public API origin for OAuth callbacks and sign-in. Set it to the shared origin on Vercel.
+- Vercel injects **`INTERNAL_API_URL`** and **`INTERNAL_AGENT_URL`** into the functions that call each service.
+  Leave these variables unset in project settings. Local services use `API_URL` and `AGENT_URL`.
+- The app service build sets **`CRM_PROJECT_PROXY`**. The project runs the workspace proxy before routing requests to services.
 - **Editing a file under `packages/` does not restart the API. Restart it by hand.**
   `bun --watch src/main.ts` refuses to watch outside its project directory and
   says so once at boot: `File ... is not in the project directory and will not be
@@ -197,7 +198,7 @@ imports nothing, Calendar reads from `now`, and Outlook records `now` as its cur
 **`CRON_SECRET`** (min 16 chars) guards `POST /internal/sync/mailboxes` and
 `/internal/sync/rates`; both **fail closed when unset**. `/internal/sync/google` is
 kept as an alias of the first, so an existing deployment's cron does not break on
-deploy. **Crons live in `apps/api/vercel.json`** — mailboxes `*/5 * * * *`, rates
+deploy. **Crons live in `vercel.json`** — mailboxes `*/5 * * * *`, rates
 daily. Minute-level schedules need a Pro plan; on Hobby it silently becomes daily.
 
 Deliberate absences: **no `GOOGLE_SYNC_ENABLED`** (a switch that can disable a mandatory

@@ -187,6 +187,10 @@ export class EnvironmentVariables {
 	AGENT_URL?: string;
 
 	@IsOptional()
+	@IsUrl({ require_tld: false, require_protocol: true })
+	INTERNAL_AGENT_URL?: string;
+
+	@IsOptional()
 	@IsString()
 	AGENT_BRIDGE_SECRET?: string;
 

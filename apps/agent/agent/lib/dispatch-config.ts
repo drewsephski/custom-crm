@@ -44,7 +44,6 @@ export const DISPATCH = {
 	},
 
 	self: {
-		defaultUrl: "http://127.0.0.1:2000",
 		path: "/internal/crm/dispatch",
 		timeoutMs: 2 * SECOND_MS,
 	},

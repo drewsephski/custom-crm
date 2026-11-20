@@ -123,9 +123,12 @@ const streamQueryNames = [
 	"streamControlVersion",
 ] as const;
 
-export function eveProxyTargetUrl(request: Request, agentUrl: string): URL {
+export function eveProxyTargetUrl(
+	request: Request,
+	agentUrl: (path: string) => URL,
+): URL {
 	const incoming = new URL(request.url);
-	const target = new URL(incoming.pathname, agentUrl);
+	const target = agentUrl(incoming.pathname);
 	for (const name of streamQueryNames) {
 		const value = incoming.searchParams.get(name);
 		if (value !== null) target.searchParams.set(name, value);

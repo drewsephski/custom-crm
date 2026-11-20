@@ -3,7 +3,7 @@ import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { NextRequest } from "next/server";
 import { readWorkspaceGate } from "../lib/onboarding";
-import { proxy } from "../proxy";
+import { proxy } from "../lib/workspace-proxy";
 
 const SESSION_COOKIE = `${AUTH_COOKIE_PREFIX}.session_token=abc.def`;
 

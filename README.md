@@ -393,20 +393,18 @@ The link sets the local session cookie and opens the app. It refuses to run with
 
 ## Deploying
 
-Three deployments and a Neon project: the Next.js app, the NestJS API, and the agent.
-Production uses the Neon `production` branch. A release build of the API applies
-migrations to it with `prisma migrate deploy`; nothing else does.
-They are independent, and the only thing they must agree on is `DATABASE_URL` and
-`BETTER_AUTH_SECRET` — the API mints the session cookie and the app verifies it, so a
-mismatch is a redirect loop rather than an error.
+Import the repository root as one Vercel project. The root `vercel.json` builds the app, API, and Eve agent separately.
+Set `API_URL` and `APP_URL` to the same public HTTPS origin for each environment.
+Register `/api/auth/callback/google` and `/api/auth/callback/microsoft` on that origin for the providers you use.
+Vercel supplies `INTERNAL_API_URL` and `INTERNAL_AGENT_URL` through service bindings.
 
-Set `API_URL` and `APP_URL` to the real origins, and if the two are on different
-subdomains of one parent, set `AUTH_COOKIE_DOMAIN` to the parent so one cookie covers
-both. Add `http://your-api-host/api/auth/callback/google` — and, if you use Microsoft,
-`http://your-api-host/api/auth/callback/microsoft` — to the provider's
-redirect URIs. Set `CRON_SECRET` and let Vercel run the crons in
-`apps/api/vercel.json`, or set `CRON_TARGET_URL` and run `neon deploy` so the Neon
-`cron` function relays the same schedules. Use one of the two, never both.
+Set `DATABASE_URL` and `BETTER_AUTH_SECRET` for the project. The production API build applies database migrations.
+Set `AGENT_BRIDGE_SECRET` for agent sessions and internal dispatch.
+Set `CRON_SECRET` for scheduled work. Leave Neon's cron relay disabled when Vercel runs these schedules.
+The API reference is at `/api/docs/`. The app checks workspace membership before forwarding Eve session requests.
+
+To test the services locally, use a development database and run `vercel dev --local` from the repository root.
+Set both public origins to the local Vercel address for this test.
 
 Set `RESEND_API_KEY` and `EMAIL_FROM` on the API. Set `CONTEXT_DEV_API_KEY` on the agent.
 Leave `ALLOWED_SIGN_IN` empty for public sign-up.

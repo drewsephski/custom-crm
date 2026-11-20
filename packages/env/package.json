@@ -5,6 +5,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./service-urls": "./src/service-urls.ts",
 		"./load": "./src/load.ts"
 	},
 	"scripts": {

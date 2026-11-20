@@ -1,12 +1,9 @@
 import { db } from "@crm/db";
 import { runAsSystem, runInTenant } from "@crm/db/tenancy";
+import { agentServiceUrl } from "@crm/env/service-urls";
 import { connection } from "next/server";
 import { z } from "zod";
-import {
-	AGENT_URL,
-	bridgeConfigured,
-	mintBridgeToken,
-} from "@/lib/agent-bridge";
+import { bridgeConfigured, mintBridgeToken } from "@/lib/agent-bridge";
 import {
 	EveProxyRequestError,
 	eveProxyAgentResponse,
@@ -122,7 +119,7 @@ async function handler(request: Request): Promise<Response> {
 		return failure("Builder messages must use the durable queue.", 409);
 	}
 
-	const target = eveProxyTargetUrl(request, AGENT_URL);
+	const target = eveProxyTargetUrl(request, agentServiceUrl);
 	const headers = new Headers({
 		accept:
 			route.kind === "stream" ? "application/x-ndjson" : "application/json",
@@ -258,9 +255,8 @@ async function cancelSession(
 	authorization: string,
 ): Promise<void> {
 	try {
-		const target = new URL(
+		const target = agentServiceUrl(
 			`/eve/v1/session/${encodeURIComponent(sessionId)}/cancel`,
-			AGENT_URL,
 		);
 		const response = await fetch(target, {
 			method: "POST",

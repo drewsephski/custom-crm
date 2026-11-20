@@ -55,13 +55,18 @@ export async function createApp(): Promise<NestExpressApplication> {
 		name: API_KEY_HEADER,
 	} as const;
 
+	app
+		.getHttpAdapter()
+		.getInstance()
+		.get("/", (_request, response) => response.redirect("/api/docs"));
+
 	// SwaggerModule.setup() registers its Express routes synchronously, so it must
 	// happen before app.init() the same way the REST bridge does — Nest's own
 	// routing (wired up during init) otherwise shadows anything registered after
 	// it. The factory form defers building the document (which needs the tRPC
 	// router, only available post-init) to first request instead.
 	SwaggerModule.setup(
-		"",
+		"api/docs",
 		app,
 		() => {
 			const { appRouter } = app.get(AppRouterHost);

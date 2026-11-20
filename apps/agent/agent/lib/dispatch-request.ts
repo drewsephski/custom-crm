@@ -1,3 +1,4 @@
+import { agentServiceUrl } from "@crm/env/service-urls";
 import { DISPATCH } from "./dispatch-config";
 
 export type DispatchRequest = () => void;
@@ -7,8 +8,7 @@ export async function postDispatch(): Promise<boolean> {
 	if (!secret) return false;
 
 	try {
-		const base = process.env.AGENT_URL?.trim() || DISPATCH.self.defaultUrl;
-		const response = await fetch(new URL(DISPATCH.self.path, base), {
+		const response = await fetch(agentServiceUrl(DISPATCH.self.path), {
 			method: "POST",
 			headers: { authorization: `Bearer ${secret}` },
 			signal: AbortSignal.timeout(DISPATCH.self.timeoutMs),
