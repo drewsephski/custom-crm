@@ -38,7 +38,7 @@ function stubFetch(handler: (call: Call) => Promise<Response>): Call[] {
 function json(
 	body:
 		| { id: string }
-		| { message: string; name?: string;statusCode?:number }
+		| { message: string; name?: string; statusCode?: number }
 		| { accepted: boolean },
 	status = 200,
 ): Response {

@@ -105,6 +105,15 @@ describe("guardDevelopmentCommand", () => {
 		expect(decisions.some((decision) => !decision.allowed)).toBe(true);
 	});
 
+	it("retains protection when the shell repeats a file's database URL", () => {
+		const sources = [
+			shell({ DATABASE_URL: PROD_POOLED, DEV_DATABASE_HOSTS: PROD_HOST }),
+			file({ DATABASE_URL: PROD_POOLED, NEON_BRANCH: "production" }),
+		];
+		expect(guardDevelopmentCommand(sources)[0]?.allowed).toBe(false);
+		expect(guardDeployCommand(sources)[0]?.allowed).toBe(false);
+	});
+
 	it("allows an unprotected remote database with the override", () => {
 		const [decision] = guardDevelopmentCommand([
 			shell({ ALLOW_REMOTE_DB: "1" }),

@@ -51,14 +51,21 @@ export function guardTargets(sources: GuardSource[]): GuardTarget[] {
 		if (!url) continue;
 
 		const host = databaseHost(url).toLowerCase();
-		if (targets.some((target) => target.host === host)) continue;
+		const branch =
+			values[DATABASE_GUARD.branchVariable]?.trim().toLowerCase() ||
+			setting(sources, DATABASE_GUARD.branchVariable)?.trim().toLowerCase() ||
+			null;
+		const existing = targets.find((target) => target.host === host);
+		if (existing) {
+			if (isProtectedBranch(branch)) existing.branch = branch;
+			continue;
+		}
 
 		targets.push({
 			url,
 			host,
 			from,
-			branch:
-				values[DATABASE_GUARD.branchVariable]?.trim().toLowerCase() || null,
+			branch,
 		});
 	}
 
@@ -76,8 +83,8 @@ export function isProtectedTarget(
 	target: GuardTarget,
 	sources: GuardSource[],
 ): "protected-host" | "protected-branch" | null {
-	const protectedHosts = parseDevHosts(
-		setting(sources, DATABASE_GUARD.protectedHostsVariable),
+	const protectedHosts = sources.flatMap(({ values }) =>
+		parseDevHosts(values[DATABASE_GUARD.protectedHostsVariable]),
 	);
 
 	if (protectedHosts.includes(target.host)) return "protected-host";

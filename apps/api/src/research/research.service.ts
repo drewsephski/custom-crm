@@ -104,9 +104,7 @@ function rate(part: number, whole: number): number | null {
 export class ResearchService {
 	private readonly logger = new Logger(ResearchService.name);
 
-	constructor(
-		@InjectDatabase() private readonly db: Db,
-	) {}
+	constructor(@InjectDatabase() private readonly db: Db) {}
 
 	async forRecord(
 		input: ResearchForRecordInput,
@@ -341,9 +339,12 @@ export class ResearchService {
 			if (sameValue(record[column], value)) return false;
 			if (!sameValue(record[column], item.current)) throw this.changed(item);
 
-			const written=await tx.company.updateMany({where:{id:target.id,[column]:record[column]},data:{[column]:value}});
- if(written.count!==1)throw this.changed(item);
- return true;
+			const written = await tx.company.updateMany({
+				where: { id: target.id, [column]: record[column] },
+				data: { [column]: value },
+			});
+			if (written.count !== 1) throw this.changed(item);
+			return true;
 		}
 
 		const column = contactAcceptColumn(item.field);
@@ -360,9 +361,12 @@ export class ResearchService {
 		if (sameValue(record[column], value)) return false;
 		if (!sameValue(record[column], item.current)) throw this.changed(item);
 
-		const written=await tx.contact.updateMany({where:{id:target.id,[column]:record[column]},data:{[column]:value}});
- if(written.count!==1)throw this.changed(item);
- return true;
+		const written = await tx.contact.updateMany({
+			where: { id: target.id, [column]: record[column] },
+			data: { [column]: value },
+		});
+		if (written.count !== 1) throw this.changed(item);
+		return true;
 	}
 
 	private notAcceptable(item: ResearchFinding): BadRequestException {

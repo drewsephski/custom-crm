@@ -4,9 +4,12 @@ import {
 	COMPANY_IMAGE_FIELDS,
 	type CompanyImageField,
 	MIRROR_URL_MARKERS,
+	privateImagePrefix,
 } from "@crm/db/images";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
+
+const mirrorMarkers = [...MIRROR_URL_MARKERS, privateImagePrefix()];
 
 const MAX_PER_SWEEP = 25;
 
@@ -15,7 +18,7 @@ type CompanyImageRow = Record<CompanyImageField, string | null>;
 const EXTERNAL_CONTACT_IMAGE: Prisma.ContactWhereInput = {
 	imageUrl: { not: null },
 	NOT: {
-		OR: MIRROR_URL_MARKERS.map((marker) => ({
+		OR: mirrorMarkers.map((marker) => ({
 			imageUrl: { contains: marker },
 		})),
 	},
@@ -24,7 +27,7 @@ const EXTERNAL_CONTACT_IMAGE: Prisma.ContactWhereInput = {
 const EXTERNAL_USER_IMAGE: Prisma.UserWhereInput = {
 	image: { not: null },
 	NOT: {
-		OR: MIRROR_URL_MARKERS.map((marker) => ({ image: { contains: marker } })),
+		OR: mirrorMarkers.map((marker) => ({ image: { contains: marker } })),
 	},
 };
 
@@ -163,7 +166,7 @@ export class ImageMirrorService {
 function externalCompanyImage(
 	field: CompanyImageField,
 ): Prisma.CompanyWhereInput {
-	const mirrored = MIRROR_URL_MARKERS.map((marker) => {
+	const mirrored = mirrorMarkers.map((marker) => {
 		const match: Prisma.CompanyWhereInput = {};
 		match[field] = { contains: marker };
 		return match;
