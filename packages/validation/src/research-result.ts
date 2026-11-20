@@ -38,6 +38,8 @@ export const researchSources = z.array(researchSource).max(L.sources);
 export const RESEARCH_FINDING_STATES = [
 	"verified",
 	"suggested",
+	"accepted",
+	"dismissed",
 	"unknown",
 ] as const;
 
