@@ -20,6 +20,7 @@ const KEYS = [
 	"CONTEXT_DEV_API_KEY",
 	"BLOB_READ_WRITE_TOKEN",
 	"S3_PUBLIC_BUCKET",
+	"S3_PRIVATE_BUCKET",
 ] as const;
 
 const PLATFORM_KEY = "ctx-platform-key-0123456789";
