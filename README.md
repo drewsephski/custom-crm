@@ -7,18 +7,15 @@
   </a>
 </p>
 
-<p align="center">
-  <img alt="stars" height="21" src="https://afterglow.watch/badge/trycompai/crm">
-</p>
-
-<h1 align="center">CRM</h1>
+<h1 align="center">Custom CRM</h1>
 
 <p align="center">
-  <strong>Comp AI CRM is an open source, CRM designed for AI agents.</strong><br>
-  Agentic-first CRM.
+  <strong>A ready-to-use AI CRM. Sign up, answer a few questions, and start working.</strong><br>
+  A research agent keeps every record current, with sources.
 </p>
 
 <p align="center">
+  <a href="#from-landing-page-to-workspace"><strong>Onboarding</strong></a> ·
   <a href="#the-agent"><strong>The agent</strong></a> ·
   <a href="#connections-and-agent-access"><strong>Connections</strong></a> ·
   <a href="#the-stack"><strong>Stack</strong></a> ·
@@ -40,6 +37,26 @@
 </p>
 
 ---
+
+## From landing page to workspace
+
+A visitor opens `/`, chooses **Get started**, and signs in with Google or an email
+link. No password exists. The wizard then asks one question per screen:
+
+1. What kind of business it is.
+2. What the CRM must help with.
+3. The business name and website. The website is researched, and the result is a
+   suggestion the user reviews.
+4. A starting pipeline, chosen from presets and edited before it is confirmed.
+5. Finish. The workspace opens with one first action.
+
+Nobody touches code, Docker or an API key. Every answer is stored on the server, so a
+refresh or a new sign-in resumes on the same screen.
+
+**Each workspace is its own tenant.** A person can belong to several workspaces. Every
+CRM row carries `organizationId`, and Postgres row-level security enforces the
+boundary ([docs/tenancy.md](./docs/tenancy.md)). Members have the role owner, admin or
+member, and join by invitation.
 
 ## What this is
 
@@ -107,19 +124,23 @@ failed call at a time, and it prints the list at startup:
 
 ```
 [agent] off  Web research (PERPLEXITY_API_KEY)
-[agent] on   Company brand data (Settings → General)
-[agent] on   LinkedIn (Settings → General)
+[agent] on   Company brand data (CONTEXT_DEV_API_KEY)
+[agent] on   LinkedIn (CONTEXT_DEV_API_KEY)
 ```
 
 **Company brand data and LinkedIn are both [Context](https://link.context.dev/crm)**,
-and both come from the same key. The first is the logo, the colours, the industry and
-the real name behind a domain, which is the difference between an account that arrives
-as itself and one that arrives as a grey square with its initials in it. The second
-reads a person back from a LinkedIn URL already on their record — their real name,
-current title, employer and every earlier role — which is what settles who an address
-belongs to. It is the one key that is asked for rather than configured: it lives in a
-row, the onboarding asks for it, and **Settings → General** changes it afterwards,
-because a self-hoster's admin cannot redeploy to set an environment variable.
+and both come from one platform key, `CONTEXT_DEV_API_KEY`. The first is the logo, the
+colours, the industry and the real name behind a domain. The second reads a person back
+from a LinkedIn URL already on their record. Customers never supply a key and never see
+this one.
+
+**Research is metered in provider credits.** Each workspace has a monthly allowance and
+the install has a monthly ceiling. A request reserves credits before the provider is
+called and settles with the amount the provider reports. Identical requests are
+deduplicated, company brand data is cached across workspaces by domain, and a request
+that does not fit is refused with a plain message. Each request is recorded with its
+sources, and a finding that differs from what a person typed becomes a suggestion to
+accept or dismiss. Status changes reach the browser through a live event stream.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
 a shell — the difference between a tool-caller and something that can keep a dossier,
@@ -170,13 +191,15 @@ A [Turborepo](https://turborepo.dev) monorepo on [Bun](https://bun.com), deploye
 | | |
 | --- | --- |
 | **Agent** | [eve](https://eve.dev) — durable sessions, tools, skills, schedules, sandboxes |
-| **Model** | [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) — no provider SDK, and OIDC on Vercel means no key to manage |
+| **Model** | [Anthropic](https://www.anthropic.com), called directly with `ANTHROPIC_API_KEY` |
 | **Sandbox** | [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) in production, Docker or microsandbox locally |
 | **Front end** | [Next.js](https://nextjs.org) App Router · [shadcn/ui](https://ui.shadcn.com) · [nuqs](https://nuqs.dev) for URL state |
 | **API** | [NestJS](https://nestjs.com) with [nestjs-trpc](https://nestjs-trpc.io) — HTTP, auth, tRPC, mailbox sync |
-| **Data** | [Prisma](https://prisma.io) · Postgres ([Neon](https://neon.tech)) · optional Redis ([Upstash](https://upstash.com)) |
-| **Auth** | [Better Auth](https://better-auth.com) — Google, Microsoft, or your own IdP; one allow-list |
-| **Files** | [Vercel Blob](https://vercel.com/docs/vercel-blob) — mirrors profile pictures so they survive the source going away |
+| **Data** | [Prisma](https://prisma.io) · Postgres on [Neon](https://neon.tech), one branch per environment · optional Redis ([Upstash](https://upstash.com)) |
+| **Auth** | [Better Auth](https://better-auth.com) — Google and email sign-in links; Microsoft or your own IdP are optional |
+| **Files** | Neon Object Storage (S3 API) — mirrors logos and profile pictures under a workspace-scoped key. Vercel Blob is the fallback |
+| **Live updates** | Postgres `LISTEN/NOTIFY` through an API event stream for research status; Neon Realtime for the members list |
+| **Schedules** | Vercel crons, or a Neon Function that relays the same schedules |
 | **Tooling** | [Biome](https://biomejs.dev) · TypeScript everywhere |
 
 The app talks to the API over **tRPC**, and the router type is generated from the
@@ -205,28 +228,33 @@ Written up where the work happens, not in a style guide:
   matcher once drifted until one matched every employer on earth.
 - **`packages/ui` is the only source of UI** ([docs/design.md](./docs/design.md)). No
   overriding styles at the call site.
-- **There are no organizations.** Single tenant, deliberately. An `organizationId`
-  that is always the same value is a column, an index and a permissions check that
-  buys nothing and reads like a real one at review time.
+- **Every row belongs to one workspace** ([docs/tenancy.md](./docs/tenancy.md)).
+  Postgres row-level security is the boundary, not a `where` clause. Code never takes
+  an `organizationId` from input.
 
 ## Quick start
 
-You need [Bun](https://bun.com) and Docker.
+You need [Bun](https://bun.com) and the [Neon CLI](https://neon.com/docs/reference/neon-cli).
+You do not need Docker.
 
 ```sh
-git clone https://github.com/trycompai/crm.git && cd crm
-cp .env.example .env          # then fill in the values below
+git clone https://github.com/drewsephski/custom-crm.git && cd custom-crm
+cp .env.example .env                 # then fill in the values below
 bun install
 
-docker compose up -d          # Postgres on :5432
+neon link --project-id <id>          # pin the Neon project
+neon checkout development --create   # a development branch; writes DATABASE_URL
 
-bun run db:deploy             # apply migrations
-bun run db:seed               # optional: a believable pipeline to look at
+bun run db:deploy                    # apply migrations to the development branch
+bun run db:seed                      # optional: a believable pipeline to look at
 bun run dev
 ```
 
 The app is on [localhost:3000](http://localhost:3000), the API on
 [localhost:3001](http://localhost:3001).
+
+Development commands never reach the production branch. The database guard refuses a
+protected branch with no override ([docs/setup.md](./docs/setup.md)).
 
 That clone gives you `release`, the default branch and the last tagged release — what you
 want if you are running this. `main` is where unreleased work lands: green, but not cut
@@ -240,16 +268,13 @@ Open `.env` and set these. Everything else in the file is optional and commented
 | Variable                                   | What to put in it                                                    |
 | ------------------------------------------ | -------------------------------------------------------------------- |
 | `BETTER_AUTH_SECRET`                       | `openssl rand -base64 32`                                             |
-| `ALLOWED_SIGN_IN`                          | Your email domain, e.g. `acme.com`. Or one address, e.g. `you@gmail.com`. |
+| `DATABASE_URL`                             | Written by `neon checkout`. A local Postgres URL works too.           |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`| A Google OAuth client — 2 minutes, below. Both or neither.             |
-| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | A Microsoft Entra app registration — below. Both or neither. |
+| `RESEND_API_KEY` / `EMAIL_FROM`            | Sends the email sign-in link and invitations. Outside production the link is printed to the API log instead. |
+| `CONTEXT_DEV_API_KEY`                      | The platform research key. Without it, research is off and the CRM still works. |
 
-**Pick at least one of Google and Microsoft**, or add your own identity provider on
-**Settings → SSO** once you are in. Setting both is fine and common: the sign-in page
-offers both buttons, and each rep's mail is read from whichever they signed in with.
-
-`DATABASE_URL` already matches the `docker compose` Postgres, so leave it alone unless
-you brought your own.
+**Sign-in needs Google or email.** Set both for a public install. Microsoft and your own
+identity provider (**Settings → SSO**) remain optional additions.
 
 <details>
 <summary><strong>Getting the Google OAuth client</strong></summary>
@@ -309,14 +334,14 @@ failing to sync.
 
 </details>
 
-`ALLOWED_SIGN_IN` is the entire authorisation model — an unset value means nobody can
-sign in, which is the safe direction to fail. It takes whole domains, individual
-addresses, or a mix:
+`ALLOWED_SIGN_IN` is optional. Empty means public self-service sign-up: anyone can
+register, and workspace membership decides what a person sees. Set it to restrict a
+private install to whole domains, single addresses, or a mix:
 
 ```sh
+ALLOWED_SIGN_IN=""                               # public sign-up
 ALLOWED_SIGN_IN="acme.com"                       # everyone at your company
 ALLOWED_SIGN_IN="acme.com,contractor@gmail.com"  # …plus one outsider
-ALLOWED_SIGN_IN="you@gmail.com"                  # a one-person install
 ```
 
 ## Configuration
@@ -332,7 +357,10 @@ short version:
 | | |
 | --- | --- |
 | `API_URL` / `APP_URL` | Where the two halves are served. Only needed off localhost. |
+| `RESEARCH_WORKSPACE_MONTHLY_CREDITS` | Research credits each workspace gets per month. Default 500. |
+| `RESEARCH_PLATFORM_MONTHLY_CREDITS` | Research credits the whole install may spend per month. Default 20000. |
 | `PERPLEXITY_API_KEY` | Lets the agent search the open web, with citations. |
+| `DEV_DATABASE_HOSTS` / `PROTECTED_DATABASE_HOSTS` | Which remote database hosts development commands may and may never touch. |
 | `AGENT_BRIDGE_SECRET` | Lets a rep talk to the agent from a contact's **Agent** tab. |
 | `CHAT_EVENT_ENCRYPTION_KEY` | Encrypts builder chat history. Generate it with `openssl rand -base64 32`. |
 | `MCP_ENCRYPTION_KEY` | Encrypts MCP OAuth tokens. Generate it with `openssl rand -base64 32`. |
@@ -344,12 +372,14 @@ short version:
 
 | Command | |
 | --- | --- |
-| `bun run dev` | Prepare the local database, then run everything in dependency-aware watch mode |
+| `bun run dev` | Migrate the development database, then run everything in dependency-aware watch mode |
 | `bun run build` | Build all apps and packages |
 | `bun run test` | Run the test suite |
 | `bun run check-types` | `tsc --noEmit` everywhere |
 | `bun run lint` / `format` | [Biome](https://biomejs.dev) |
-| `bun run db:migrate` | Create and apply a migration |
+| `bun run db:migrate` | Create and apply a migration on the development database |
+| `bun run db:deploy` | Apply existing migrations. Refuses a protected database outside a release |
+| `bun run db:test` | Create and migrate the `_test` database the suite uses |
 | `bun run db:seed` | Top up the demo pipeline (idempotent) |
 | `bun run db:studio` | Prisma Studio |
 | `bun run --filter=api trpc:generate` | Regenerate the `AppRouter` type |
@@ -364,7 +394,9 @@ The link sets the local session cookie and opens the app. It refuses to run with
 
 ## Deploying
 
-Three deployments and a Postgres: the Next.js app, the NestJS API, and the agent.
+Three deployments and a Neon project: the Next.js app, the NestJS API, and the agent.
+Production uses the Neon `production` branch. A release build of the API applies
+migrations to it with `prisma migrate deploy`; nothing else does.
 They are independent, and the only thing they must agree on is `DATABASE_URL` and
 `BETTER_AUTH_SECRET` — the API mints the session cookie and the app verifies it, so a
 mismatch is a redirect loop rather than an error.
@@ -373,8 +405,12 @@ Set `API_URL` and `APP_URL` to the real origins, and if the two are on different
 subdomains of one parent, set `AUTH_COOKIE_DOMAIN` to the parent so one cookie covers
 both. Add `http://your-api-host/api/auth/callback/google` — and, if you use Microsoft,
 `http://your-api-host/api/auth/callback/microsoft` — to the provider's
-redirect URIs. Set `CRON_SECRET` and point a scheduler at
-`POST /internal/sync/mailboxes` to keep the mailbox sync running.
+redirect URIs. Set `CRON_SECRET` and let Vercel run the crons in
+`apps/api/vercel.json`, or set `CRON_TARGET_URL` and run `neon deploy` so the Neon
+`cron` function relays the same schedules. Use one of the two, never both.
+
+Set `RESEND_API_KEY`, `EMAIL_FROM` and `CONTEXT_DEV_API_KEY` on the API and the agent.
+Leave `ALLOWED_SIGN_IN` empty for public sign-up.
 
 `apps/api/src/generated/server.ts` is committed and `build` must never regenerate it —
 the generator needs a newer GLIBC than most build images have. Regenerate locally and
@@ -390,4 +426,6 @@ issue.
 
 ## Licence
 
-[MIT](./LICENSE).
+[MIT](./LICENSE). This product is built on the open-source
+[Comp AI CRM](https://github.com/trycompai/crm), and the licence keeps its copyright
+notice.

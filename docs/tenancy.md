@@ -162,6 +162,8 @@ current organization (`packages/db/src/idempotency.ts`).
 | Crons (`tracking/retention`, `telemetry`) | System — install-wide maintenance |
 | Agent tools, hooks, instructions | The session's `organizationId` attribute (`apps/agent/agent/lib/tenant-scope.ts`) |
 | Agent dispatch | Lease across organizations as system; run each task in its own |
+| `GET /api/live` (event stream) | The `workspace` slug in the query, resolved only among the caller's memberships. Events for other organizations are dropped before they are written |
+| `onboarding.*` (tRPC behind `UserMiddleware`) | None until `finish` creates the workspace; then `runInTenant` for its configuration |
 | `/eve/v1/*` proxy (app) | The record's or conversation's organization, if the rep is a member; minted into the bridge token |
 
 ### The browser names its workspace on every request
@@ -189,6 +191,9 @@ Each is either install-wide by nature or mediated by explicit membership checks.
 | `slackInstallation` | A seconds-long handoff inside Slack's OAuth token callback, which has no session. It is keyed by the SHA-256 of the bot token and the installer's Slack user id, so one exchange matches exactly one handoff even when one Slack user installs into two teams or two agencies at once. The durable rows (`slackConnection`, `slackWorkspaceGrant`) are tenant-scoped |
 | `trackingCounter` | Rate-limit counters; their keys carry the organization |
 | `install`, `telemetryMilestone`, `telemetryCounter` | Anonymous install-wide telemetry |
+| `onboardingSession` | Wizard progress for a person who has no workspace yet. Keyed by `userId`. `OnboardingService` reads it in system scope and filters by the session user, never by an id from input |
+| `platformResearchUsage` | The install-wide research credit counter, one row per month and provider. It holds numbers only |
+| `providerCache` | Provider answers shared across workspaces. It holds company brand data keyed by public domain only. Person data never enters it: that stays in the tenant-scoped `researchResult` |
 
 ## Roles
 
