@@ -18,7 +18,7 @@ import {
 import { Icon } from "@crm/ui/components/icon";
 import { cn } from "@crm/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CopyIcon, XIcon } from "lucide-react";
+import { CopyIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useTRPC } from "@/lib/trpc/client";
@@ -111,28 +111,13 @@ export function ShareChatDialog({
 					Share chat
 				</Button>
 			</DialogTrigger>
-			<DialogContent
-				showCloseButton={false}
-				className="w-[440px] max-w-[calc(100%-2rem)] gap-0 overflow-hidden p-0 sm:max-w-[440px]"
-			>
-				<DialogHeader className="relative gap-1 border-b p-5 pr-14">
-					<DialogTitle className="font-semibold text-sm">
-						Share chat
-					</DialogTitle>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Share chat</DialogTitle>
 					<DialogDescription>{title}</DialogDescription>
-					<DialogClose asChild>
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="absolute top-4 right-4"
-						>
-							<Icon icon={XIcon} />
-							<span className="sr-only">Close</span>
-						</Button>
-					</DialogClose>
 				</DialogHeader>
 
-				<div className="flex flex-col gap-2.5 p-5">
+				<div className="flex flex-col gap-2.5">
 					{status.isPending ? (
 						<p
 							role="status"
@@ -225,9 +210,10 @@ export function ShareChatDialog({
 					)}
 				</div>
 
-				<DialogFooter className="flex-row items-center justify-between border-t p-4 px-5">
+				<DialogFooter>
 					<Button
 						variant="ghost"
+						className="sm:mr-auto"
 						onClick={() => revokeAction.run()}
 						disabled={shared !== true || revokeAction.pending}
 						aria-busy={revokeAction.pending}
@@ -241,14 +227,12 @@ export function ShareChatDialog({
 							Revoke link
 						</AsyncButtonContent>
 					</Button>
-					<div className="flex gap-3">
-						<DialogClose asChild>
-							<Button variant="outline">Cancel</Button>
-						</DialogClose>
-						<DialogClose asChild>
-							<Button>Done</Button>
-						</DialogClose>
-					</div>
+					<DialogClose asChild>
+						<Button variant="outline">Cancel</Button>
+					</DialogClose>
+					<DialogClose asChild>
+						<Button>Done</Button>
+					</DialogClose>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

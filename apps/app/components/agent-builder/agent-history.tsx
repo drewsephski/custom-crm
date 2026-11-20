@@ -12,6 +12,13 @@ import {
 } from "@crm/ui/components/alert-dialog";
 import { Button } from "@crm/ui/components/button";
 import { Icon } from "@crm/ui/components/icon";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@crm/ui/components/select";
 import { cn } from "@crm/ui/lib/utils";
 import {
 	ChevronDownIcon,
@@ -48,6 +55,22 @@ const eventSummary = z
 	.catch(null);
 
 const auditChange = z.object({ before: z.json(), after: z.json() });
+
+const RUN_OUTCOMES = [
+	{ value: "ALL", label: "All outcomes" },
+	{ value: "SUCCEEDED", label: "Succeeded" },
+	{ value: "FAILED", label: "Failed" },
+	{ value: "RUNNING", label: "Running" },
+	{ value: "QUEUED", label: "Queued" },
+	{ value: "WAITING_FOR_APPROVAL", label: "Waiting for approval" },
+	{ value: "CANCELLED", label: "Cancelled" },
+] as const;
+
+const ACTIVITY_KINDS = [
+	{ value: "ALL", label: "All changes" },
+	{ value: "agent.", label: "Agent changes" },
+	{ value: "run.", label: "Run requests" },
+] as const;
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
 	month: "short",
@@ -92,20 +115,18 @@ export function AgentRuns({
 	return (
 		<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
 			<div className="flex min-h-7 items-center justify-start sm:justify-end">
-				<select
-					value={outcome}
-					onChange={(event) => setOutcome(event.target.value)}
-					aria-label="Filter run outcomes"
-					className="h-7 rounded-md border bg-muted px-2.5 font-medium text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-				>
-					<option value="ALL">All outcomes</option>
-					<option value="SUCCEEDED">Succeeded</option>
-					<option value="FAILED">Failed</option>
-					<option value="RUNNING">Running</option>
-					<option value="QUEUED">Queued</option>
-					<option value="WAITING_FOR_APPROVAL">Waiting for approval</option>
-					<option value="CANCELLED">Cancelled</option>
-				</select>
+				<Select value={outcome} onValueChange={setOutcome}>
+					<SelectTrigger size="sm" aria-label="Filter run outcomes">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent align="end">
+						{RUN_OUTCOMES.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			</div>
 
 			{visible.map((run) => (
@@ -347,16 +368,18 @@ export function AgentActivity({ activity }: { activity: Activity }) {
 	return (
 		<div className="flex min-w-0 flex-col gap-4 sm:gap-6">
 			<div className="flex min-h-7 flex-wrap items-center justify-start gap-2 sm:justify-end sm:gap-3">
-				<select
-					value={kind}
-					onChange={(event) => setKind(event.target.value)}
-					aria-label="Filter activity"
-					className="h-7 rounded-md border bg-muted px-2.5 font-medium text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-				>
-					<option value="ALL">All changes</option>
-					<option value="agent.">Agent changes</option>
-					<option value="run.">Run requests</option>
-				</select>
+				<Select value={kind} onValueChange={setKind}>
+					<SelectTrigger size="sm" aria-label="Filter activity">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent align="end">
+						{ACTIVITY_KINDS.map((option) => (
+							<SelectItem key={option.value} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 				<Button
 					variant="outline"
 					size="sm"
