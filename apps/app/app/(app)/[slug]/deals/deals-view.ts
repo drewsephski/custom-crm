@@ -6,8 +6,9 @@ export const DEAL_VIEWS = ["board", "table"] as const;
 export type DealView = (typeof DEAL_VIEWS)[number];
 
 export const dealViewParsers = {
-	[SEARCH_PARAM.deals.view]:
-		parseAsStringLiteral(DEAL_VIEWS).withDefault("board"),
+	[SEARCH_PARAM.deals.view]: parseAsStringLiteral(DEAL_VIEWS)
+		.withDefault("board")
+		.withOptions({ shallow: false }),
 };
 
 export const loadDealView = createLoader(dealViewParsers);

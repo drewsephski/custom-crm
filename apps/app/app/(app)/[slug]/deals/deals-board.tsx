@@ -147,7 +147,7 @@ export function DealsBoard() {
 		if (!found || !target) return;
 
 		if (found.column.stage.id !== toStageId && isLostStage(target.stage)) {
-			void askWhy(dealId, toStageId);
+			void askWhy(dealId, toStageId, placement);
 			return;
 		}
 

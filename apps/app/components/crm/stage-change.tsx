@@ -22,9 +22,16 @@ import { Spinner } from "@crm/ui/components/spinner";
 import { Textarea } from "@crm/ui/components/textarea";
 import { useMutation } from "@tanstack/react-query";
 import { ChevronDownIcon } from "lucide-react";
-import { parseAsString, useQueryStates } from "nuqs";
+import { useQueryStates } from "nuqs";
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import {
+	type BoardPlacement,
+	CLOSE_REASON_CLEARED,
+	closeReasonParams,
+	closeReasonPlacement,
+	closeReasonRequest,
+} from "@/app/(app)/[slug]/deals/close-reason-state";
 import { isLostStage, type StageLike } from "@/lib/deal-stage";
 import { usePipeline } from "@/lib/pipeline";
 import { SEARCH_PARAM } from "@/lib/search-param-keys";
@@ -32,19 +39,11 @@ import { useCrmCache } from "@/lib/trpc/cache";
 import { useTRPC } from "@/lib/trpc/client";
 import { DealStageIndicator } from "./deal-stage";
 
-const closeReasonParams = {
-	[SEARCH_PARAM.dialog.closeDeal]: parseAsString,
-	[SEARCH_PARAM.dialog.closeStage]: parseAsString,
-};
-
 export function useCloseReason() {
 	const [, setCloseParams] = useQueryStates(closeReasonParams);
 
-	return (dealId: string, stageId: string) =>
-		setCloseParams({
-			[SEARCH_PARAM.dialog.closeDeal]: dealId,
-			[SEARCH_PARAM.dialog.closeStage]: stageId,
-		});
+	return (dealId: string, stageId: string, placement?: BoardPlacement) =>
+		setCloseParams(closeReasonRequest(dealId, stageId, placement));
 }
 
 function useStageMutation(onDone?: () => void) {
@@ -137,10 +136,7 @@ export function CloseReasonDialog() {
 
 	const close = () => {
 		setReason("");
-		void setCloseParams({
-			[SEARCH_PARAM.dialog.closeDeal]: null,
-			[SEARCH_PARAM.dialog.closeStage]: null,
-		});
+		void setCloseParams(CLOSE_REASON_CLEARED);
 	};
 
 	const setStage = useStageMutation(() => {
@@ -174,6 +170,7 @@ export function CloseReasonDialog() {
 							id: closing,
 							stageId: stage.id,
 							closedReason: reason,
+							placement: closeReasonPlacement(closeValues),
 						});
 					}}
 				>
