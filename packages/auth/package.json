@@ -9,7 +9,7 @@
 		"./auth-config": "./src/auth-config.ts",
 		"./chat-event-crypto": "./src/chat-event-crypto.ts",
 		"./client": "./src/client.ts",
-		"./cookies": "./src/cookies.ts",
+		"./cookies": "./src/cookies.js",
 		"./email": "./src/email.ts",
 		"./email-templates": "./src/email-templates.ts",
 		"./env": "./src/env.ts",
@@ -24,7 +24,7 @@
 		"./slack-scopes": "./src/slack-scopes.ts",
 		"./sso": "./src/sso.ts",
 		"./workspace": "./src/workspace.ts",
-		"./workspace-header": "./src/workspace-header.ts"
+		"./workspace-header": "./src/workspace-header.js"
 	},
 	"scripts": {
 		"auth:generate": "better-auth generate --config src/auth.ts --output ../db/prisma/schema.prisma --y",
