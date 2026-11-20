@@ -46,10 +46,20 @@ const slackCredentials = ():
 	| { clientId: string; clientSecret: string }
 	| undefined => pair("SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET");
 
+const deploymentHost =
+	process.env.VERCEL_ENV === "production"
+		? (optional("VERCEL_PROJECT_PRODUCTION_URL") ?? optional("VERCEL_URL"))
+		: process.env.VERCEL_ENV === "preview" && optional("VERCEL_URL");
+const deploymentOrigin = deploymentHost
+	? `https://${deploymentHost}`
+	: undefined;
 const apiUrl =
-	optional("API_URL") ?? optional("BETTER_AUTH_URL") ?? DEFAULT_API_URL;
+	optional("API_URL") ??
+	optional("BETTER_AUTH_URL") ??
+	deploymentOrigin ??
+	DEFAULT_API_URL;
 
-const appUrls = (optional("APP_URL") ?? DEFAULT_APP_URL)
+const appUrls = (optional("APP_URL") ?? deploymentOrigin ?? DEFAULT_APP_URL)
 	.split(",")
 	.map((origin) => origin.trim())
 	.filter(Boolean);

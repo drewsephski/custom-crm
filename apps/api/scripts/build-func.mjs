@@ -53,7 +53,11 @@ execFileSync(
 		join(funcDir, "main.mjs"),
 		...EXTERNALS.flatMap((name) => ["--external", name]),
 	],
-	{ cwd: apiDir, stdio: "inherit", env: { ...process.env, NODE_ENV: "production" } },
+	{
+		cwd: apiDir,
+		stdio: "inherit",
+		env: { ...process.env, NODE_ENV: "production" },
+	},
 );
 
 console.log("• vendoring runtime-resolved dependencies...");
