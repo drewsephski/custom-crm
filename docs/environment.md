@@ -122,15 +122,9 @@ production.
   collides with any neighbour on a shared parent domain, silently: sign-in completes,
   the row is written, every reader resolves `null`. **Changing it signs everybody out.**
 
-## `IS_MARKETING` — landing page flag, off by default
+## Public homepage
 
-`"true"` serves `app/(landing)` at `/`; anything else sends a signed-out visitor to
-`/sign-in`, because the page markets *this* product.
-
-- **Only the literal `true`** (same shape as `PRISMA_LOG_QUERIES`).
-- **It decides one thing**: what a stranger at `/` sees.
-- **`isMarketing()` (`apps/app/lib/env.ts`) reads per request**, so a config change
-  needs no rebuild. Declared in `apps/app/turbo.json` `passThroughEnv`.
+The application serves the public homepage at `/` on every installation.
 
 ## Typed, validated env
 
@@ -167,34 +161,13 @@ single place that knows what is set.
 because the API and the seed write pictures too. The Next.js app is deliberately
 excluded — recognising our URL for the image optimizer needs no token.
 
-### The Context key is asked for, not configured
+### Platform research credentials
 
-**`CONTEXT_DEV_API_KEY` is not a variable here and must not become one.** The key lives
-in `AppSetting`, is asked for at `/onboarding/research`, and changes on Settings →
-General — an admin who cannot redeploy cannot set a variable.
+Set CONTEXT_DEV_API_KEY on the agent server. An empty value disables paid research. Users can complete onboarding without research.
 
-- **It buys three places to look, not one.** Company brand data by domain, a person
-  read back from a LinkedIn URL already on their record, and open-web search. All
-  three capabilities in `agent/lib/capabilities.ts` turn on and off with this one key.
-  `research_person` asks Perplexity when `PERPLEXITY_API_KEY` is set. Without it, the
-  tool runs a Context.dev web search and hands the model each result's URL and page
-  text to read and cite. The result counts and excerpt length are in
-  `agent/lib/context-config.ts`.
-- **An install that had the variable is asked again**: no migration, no fallback, and
-  **the gate cannot be dismissed**.
-- **Nothing is lost while waiting.** A keyless `brand` task settles `SKIPPED` *before*
-  anything marks the row `RUNNING`, and `settle` only overwrites `RUNNING` — so the
-  company stays `PENDING`, which the sweep re-queues
-  (`test/keyless-brand.integration.spec.ts`).
-- **Saving the key runs the company sweep immediately** (fire-and-forget).
-- **`readContextDevKey` (`@crm/db/settings`) is the only reader**, read live with no
-  cache. An unreadable database is a capability that is off, not an exception.
-- **The key is never read back** — only whether one is set, and its last four.
-- **The agent checks it, not the API** (a vendor client in the API is a bug):
-  `settings.setResearchKey` calls `POST /internal/crm/verify-key` and writes unless the
-  answer is *invalid*. **`401` is the only answer meaning the key is wrong**, and **a
-  check that cannot be made is not a failed check** — `unknown` saves anyway and logs it
-  unverified.
+RESEARCH_WORKSPACE_MONTHLY_CREDITS sets the default monthly workspace allowance. RESEARCH_PLATFORM_MONTHLY_CREDITS sets the shared platform allowance.
+The agent reserves credits before each billable call. It reads usage from provider responses.
+Set RESEND_API_KEY and EMAIL_FROM for production email delivery. Configure Google credentials to enable Google sign-in.
 
 ## Mailbox sync
 
@@ -237,12 +210,7 @@ says who is internal — two sources is how a colleague becomes a lead), **no
 `CRM_TELEMETRY_DISABLED="1"` — or `DO_NOT_TRACK=1`, honoured identically — and nothing
 is sent. No client is constructed, so there is no queue waiting to flush later.
 
-- **Server side only**, `posthog-node` in the API and the agent. **`posthog-js`
-  appears once, on the `trycrm.ai` landing page**, and nowhere a record can be
-  reached: autocapture on a CRM would lift contact names and deal amounts out of
-  somebody else's database. That one import is gated on
-  `window.location.hostname`, not on `IS_MARKETING` — turning the landing page on
-  for your own domain never loads it. `docs/telemetry.md`.
+- The API and agent send server telemetry. The homepage does not load marketing analytics.
 - **There is no variable for the destination.** The project key and host are
   constants in `packages/telemetry/src/project.ts`. A `phc_` key is write-only —
   it can send events and read nothing back — so making it configurable would

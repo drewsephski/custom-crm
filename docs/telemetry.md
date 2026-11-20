@@ -236,53 +236,7 @@ so is any error class that is not a plain identifier.
 
 ## The landing page
 
-`trycrm.ai` is the one place `posthog-js` runs: web analytics and session replay of strangers
-reading a pitch. It is a website, not an install — there is no database behind that page and
-no record within reach of it. Everything above still holds for the CRM itself.
-
-**It cannot run on your hostname.** `analyticsAllowed` (`apps/app/lib/analytics.ts`) compares
-`window.location.hostname` against two literals — `trycrm.ai` and `www.trycrm.ai` — and
-`posthog-js` sits behind a dynamic `import()` on the far side of that check. Turn
-`IS_MARKETING="true"` on and serve the same page from a domain of your own and the SDK is
-never fetched: not sent and then dropped, never downloaded. The gate is the hostname rather
-than `IS_MARKETING`, because `IS_MARKETING` is precisely the flag a self-hoster is invited to
-set.
-
-PostHog refuses it from the other side too. `recording_domains` on the receiving project names
-the same two origins, so replay and heatmaps are declined for any other page that presents the
-key.
-
-**It shares the install's project, key and host**, and the two do not mix: the landing page
-sends `$pageview`, `$pageleave`, `$autocapture`, `$web_vitals` and the two CTA events below
-about a browser, an install sends `install_daily` and its funnel about a database. Install
-events set `$process_person_profile: false`, so they never become a person and never join one.
-
-### The two CTA events
-
-| Event | When |
-| --- | --- |
-| `setup_prompt_copied` | The setup prompt reached the clipboard — after the write resolves, so a refused clipboard is not counted as a copy |
-| `github_star_clicked` | The **Star on GitHub** button was clicked. A click on the way to GitHub, not a star: whether one was given happens on a page we cannot see |
-
-Both carry one property, `cta_location` — `hero` or `closing` — because both buttons appear
-twice on the page and which one a stranger reaches is the only interesting thing about them.
-Nothing else is attached.
-
-They go through `captureLanding` in `components/landing/analytics.tsx`, behind the same
-hostname gate and the same dynamic `import()` as `init`. On any other hostname the SDK is never
-fetched, so the click is not sent and then dropped — there is nothing there to send it. Both
-sends are fire-and-forget behind a swallowed handler; neither delays the copy or the
-navigation.
-
-**`anonymize_ips` stays on**, and that costs something here: PostHog drops the address before
-geoip runs, so the landing page has no country, region or city. That setting is what makes the
-no-IP promise above true for every install, and an install's anonymity outranks a marketing
-map. A separate project is the only way to have both.
-
-`ALLOWED_PROPERTIES` does not reach these events — it guards what `packages/telemetry` builds,
-and these are the browser SDK's own. What it sends is ordinary web analytics: URL, referrer,
-UTM parameters, browser, device, screen size, a session ID. Replay masks every input by
-default and the page has no field to type in.
+The public homepage does not load the upstream marketing analytics client.
 
 ## What is never sent
 

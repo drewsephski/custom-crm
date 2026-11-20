@@ -7,7 +7,9 @@ import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
 import { linkedinSlug } from "./linkedin";
+import { cachedLookup } from "./research/meter";
 
+const cachedPerson = cachedLookup<PersonEnrichResponse>();
 export type EnrichedMatch = PersonEnrichResponse["match"];
 
 export const MATCH_FLOOR = CONTEXT.people.matchFloor;
@@ -142,10 +144,14 @@ export async function personByProfileUrl(
 	}
 
 	try {
-		const response = await api.people.enrich({
-			social_urls: [profileUrl],
-			timeoutMS: CONTEXT.timeoutMs,
-		});
+		const response = await cachedPerson(
+			{ operation: "people.enrich", key: profileUrl },
+			() =>
+				api.people.enrich({
+					social_urls: [profileUrl],
+					timeoutMS: CONTEXT.timeoutMs,
+				}),
+		);
 
 		return matchFrom(response.match);
 	} catch (error) {
@@ -182,7 +188,14 @@ export async function personByClues(
 	}
 
 	try {
-		return matchFrom((await api.people.enrich(params)).match);
+		return matchFrom(
+			(
+				await cachedPerson(
+					{ operation: "people.enrich", key: JSON.stringify(params) },
+					() => api.people.enrich(params),
+				)
+			).match,
+		);
 	} catch (error) {
 		return classify(error);
 	}

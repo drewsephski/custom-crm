@@ -1,8 +1,11 @@
+import { z } from "zod";
 import { CONTEXT } from "./context-config";
 import { contextDev, describe } from "./context-dev";
 import { linkedinProfileUrl, linkedinSlug } from "./linkedin";
 import { namesMatch, normalise } from "./names";
 import { type Person, personByProfileUrl } from "./people";
+import { metered } from "./research/meter";
+import { PROVIDER_PATHS } from "./research/provider";
 
 export type LinkedinLookup = {
 	firstName: string;
@@ -18,13 +21,6 @@ export type LinkedinCandidate = {
 	pastEmployers: string[];
 	worksAtCompany: boolean | null;
 };
-
-export function guessedSlugs(lookup: LinkedinLookup): string[] {
-	const first = normalise(lookup.firstName);
-	const last = normalise(lookup.lastName);
-	if (!first || !last) return [];
-	return [`${first}-${last}`, `${first}${last}`];
-}
 
 export function searchedSlugs(
 	lookup: LinkedinLookup,
@@ -45,10 +41,9 @@ export function candidateSlugs(
 	lookup: LinkedinLookup,
 	searched: readonly string[],
 ): string[] {
-	const guessed = guessedSlugs(lookup);
 	const fullName = normalise(`${lookup.firstName}${lookup.lastName}`);
 	const exact = searched.filter((slug) => normalise(slug).startsWith(fullName));
-	const ordered = [...exact, ...guessed, ...searched];
+	const ordered = [...exact, ...searched];
 	return [...new Set(ordered)].slice(0, CONTEXT.linkedinFind.maxProfiles);
 }
 
@@ -98,15 +93,26 @@ async function searchLinkedin(query: string) {
 	const api = contextDev();
 	if (!api) return [];
 	try {
-		const response = await api.web.search({
-			query,
-			numResults: CONTEXT.linkedinFind.searchResults,
-			includeDomains: ["linkedin.com"],
-		});
-		return (response.results ?? []).map((result) => ({
-			url: result.url ?? null,
-			title: result.title ?? null,
-		}));
+		const response = await metered(
+			{ operation: "people.search", key: query },
+			() =>
+				api.post(PROVIDER_PATHS.peopleSearch, {
+					body: { query, mode: "fast" },
+				}),
+		);
+		const people = z
+			.object({
+				results: z.array(
+					z.object({
+						name: z.string().nullable(),
+						profiles: z.array(z.string()),
+					}),
+				),
+			})
+			.parse(response);
+		return people.results.flatMap((person) =>
+			person.profiles.map((url) => ({ url, title: person.name })),
+		);
 	} catch (error) {
 		console.warn(`[agent] LinkedIn search failed: ${describe(error)}`);
 		return [];
@@ -117,8 +123,9 @@ export async function findLinkedinProfiles(
 	lookup: LinkedinLookup,
 ): Promise<{ candidates: LinkedinCandidate[]; read: number }> {
 	const name = `${lookup.firstName} ${lookup.lastName}`;
-	const queries = lookup.company ? [name, `${name} ${lookup.company}`] : [name];
-	const results = (await Promise.all(queries.map(searchLinkedin))).flat();
+	const results = await searchLinkedin(
+		lookup.company ? `${name} at ${lookup.company}` : name,
+	);
 	const slugs = candidateSlugs(lookup, searchedSlugs(lookup, results));
 
 	const read = await Promise.all(

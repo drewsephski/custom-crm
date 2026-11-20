@@ -18,9 +18,11 @@ type Sent = { email: string; resendAt: number };
 export function EmailSignIn({
 	next,
 	submitLabel,
+	localEmail,
 }: {
 	next: string;
 	submitLabel: string;
+	localEmail: boolean;
 }) {
 	const emailId = useId();
 	const messageId = useId();
@@ -67,9 +69,13 @@ export function EmailSignIn({
 		return (
 			<div className="flex flex-col gap-4" aria-live="polite">
 				<div className="flex flex-col gap-1">
-					<p className="text-sm/5 font-medium">Check your email</p>
+					<p className="text-sm/5 font-medium">
+						{localEmail ? "Development sign-in link" : "Check your email"}
+					</p>
 					<p className="text-sm/5 text-muted-foreground text-pretty">
-						We sent a sign-in link to{" "}
+						{localEmail
+							? "The API console contains the development link for"
+							: "We sent a sign-in link to"}{" "}
 						<span className="font-medium text-foreground break-all">
 							{sent.email}
 						</span>

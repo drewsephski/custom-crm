@@ -8,6 +8,7 @@
 		"./agent-tasks": "./src/agent-tasks.ts",
 		"./ai-models": "./src/ai-models.ts",
 		"./attribution": "./src/attribution.ts",
+		"./object-storage": "./src/object-storage.ts",
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",
@@ -52,6 +53,7 @@
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.1173.0",
+		"@aws-sdk/s3-request-presigner": "3.1173.0",
 		"@crm/env": "workspace:*",
 		"@prisma/adapter-pg": "^7.10.1",
 		"@prisma/client": "^7.10.1",

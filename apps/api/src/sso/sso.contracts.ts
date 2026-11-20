@@ -37,6 +37,7 @@ export const ssoSignInOptionsOutput = z.object({
 	microsoft: z.boolean(),
 	emailPassword: z.boolean(),
 	magicLink: z.boolean(),
+	localEmail: z.boolean(),
 	providers: z.array(ssoPublicProviderOutput),
 });
 

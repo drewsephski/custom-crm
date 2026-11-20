@@ -4,6 +4,7 @@ const YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 export const OBJECT_STORAGE = {
 	bucketVariable: "S3_PUBLIC_BUCKET",
+	signedReadSeconds: 60,
 	cacheControl: `public, max-age=${YEAR_SECONDS}, immutable`,
 } as const;
 
@@ -41,15 +42,9 @@ export function publicObjectUrl(
 	return `${config.endpoint}/${config.bucket}/${key}`;
 }
 
-export async function putPublicObject(
-	config: ObjectStorageConfig,
-	key: string,
-	bytes: Buffer,
-	contentType: string,
-): Promise<string> {
-	const { PutObjectCommand, S3Client } = await import("@aws-sdk/client-s3");
-
-	const client = new S3Client({
+async function storageClient(config: ObjectStorageConfig) {
+	const { S3Client } = await import("@aws-sdk/client-s3");
+	return new S3Client({
 		endpoint: config.endpoint,
 		region: config.region,
 		forcePathStyle: true,
@@ -58,7 +53,53 @@ export async function putPublicObject(
 			secretAccessKey: config.secretAccessKey,
 		},
 	});
+}
 
+export function privateStorageConfig(env: NodeJS.ProcessEnv = process.env) {
+	const bucket = env.S3_PRIVATE_BUCKET?.trim();
+	if (!bucket) return null;
+	return objectStorageConfig({ ...env, S3_PUBLIC_BUCKET: bucket });
+}
+
+export function privateImageKey(organizationId: string, parts: string[]) {
+	if (
+		!/^[a-zA-Z0-9_-]+$/.test(organizationId) ||
+		!parts.length ||
+		parts.some((part) => !/^[-a-zA-Z0-9_]+(?:\.[a-zA-Z0-9]+)?$/.test(part))
+	)
+		return null;
+	return ["workspaces", organizationId, ...parts].join("/");
+}
+
+export async function signedImageUrl(config: ObjectStorageConfig, key: string) {
+	const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+	const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+	const client = await storageClient(config);
+	try {
+		return await getSignedUrl(
+			client,
+			new GetObjectCommand({
+				Bucket: config.bucket,
+				Key: key,
+				ResponseCacheControl: "private, no-store",
+			}),
+			{ expiresIn: OBJECT_STORAGE.signedReadSeconds },
+		);
+	} finally {
+		client.destroy();
+	}
+}
+
+export async function putImageObject(
+	config: ObjectStorageConfig,
+	key: string,
+	bytes: Buffer,
+	contentType: string,
+	privateOrigin?: string,
+): Promise<string> {
+	const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+
+	const client = await storageClient(config);
 	try {
 		await client.send(
 			new PutObjectCommand({
@@ -66,12 +107,16 @@ export async function putPublicObject(
 				Key: key,
 				Body: bytes,
 				ContentType: contentType,
-				CacheControl: OBJECT_STORAGE.cacheControl,
+				CacheControl: privateOrigin
+					? "private, no-store"
+					: OBJECT_STORAGE.cacheControl,
 			}),
 		);
 	} finally {
 		client.destroy();
 	}
 
-	return publicObjectUrl(config, key);
+	return privateOrigin
+		? new URL(`/api/images/${key}`, privateOrigin).href
+		: publicObjectUrl(config, key);
 }

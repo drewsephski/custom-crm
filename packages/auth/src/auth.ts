@@ -14,6 +14,7 @@ import {
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { organization } from "better-auth/plugins/organization";
+import { z } from "zod";
 import { API_KEY_EXPIRATION, API_KEY_HEADER, API_KEY_PREFIX } from "./api-keys";
 import { AUTH_ERROR, MAGIC_LINK } from "./auth-config";
 import { AUTH_COOKIE_PREFIX } from "./cookies";
@@ -168,7 +169,7 @@ export const auth = betterAuth({
 								const target = ctx.query?.[key];
 								if (target === undefined) continue;
 								if (
-									typeof target !== "string" ||
+									!z.string().safeParse(target).success ||
 									!URL.canParse(target, env.appUrl) ||
 									!env.trustedOrigins.includes(
 										new URL(target, env.appUrl).origin,

@@ -55,7 +55,7 @@ function staysOnOrigin(value: string): boolean {
 export function isSafeNextPath(
 	value: string | null | undefined,
 ): value is string {
-	if (typeof value !== "string" || !isRelativePath(value)) return false;
+	if (!value || !isRelativePath(value)) return false;
 
 	const plain = decoded(value);
 	if (plain === null || !isRelativePath(plain)) return false;

@@ -7,6 +7,7 @@ import {
 	goalKey,
 	ONBOARDING_STEPS,
 } from "@crm/validation/onboarding";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { requireSession } from "@/lib/session";
@@ -27,7 +28,8 @@ export default async function OnboardingPage({
 	searchParams,
 }: PageProps<"/onboarding">) {
 	await requireSession();
-	const another = (await searchParams).new === "1";
+	const params = await searchParams;
+	const another = params.new === "1";
 	const path = another ? "/onboarding?new=1" : "/onboarding";
 	const state = await getServerTrpcClient().onboarding.state.query({ another });
 	if (state.kind === "done") redirect("/" + state.slug);
@@ -41,14 +43,22 @@ export default async function OnboardingPage({
 				businessType: businessTypeKey.parse(value("type")),
 				advance: true,
 			});
+		if (step === "goals" && !form.getAll("goal").length)
+			redirect(path + (another ? "&" : "?") + "error=goals");
 		if (step === "goals")
 			await api.saveGoals.mutate({
 				goals: goalKey.array().min(1).parse(form.getAll("goal")),
 				advance: true,
 			});
 		if (step === "business") {
-			const lookup = value("intent") === "lookup";
-			const website = value("website");
+			const website = value("website").trim();
+			const lookup =
+				value("intent") === "lookup" ||
+				(state.kind === "wizard" &&
+					state.brandLookup &&
+					!!website &&
+					brand.status === "idle" &&
+					params.review !== "1");
 			await api.saveBusiness.mutate({
 				businessName: value("name"),
 				website,
@@ -58,18 +68,25 @@ export default async function OnboardingPage({
 				useLogo: false,
 				advance: !lookup,
 			});
-			if (lookup && website) await api.lookupBrand.mutate({ website });
+			if (lookup && website) {
+				await api.lookupBrand.mutate({ website });
+				redirect(path + (another ? "&" : "?") + "review=1");
+			}
 		}
 		if (step === "customize") {
 			const preset = presets.find((p) => p.key === value("preset"));
 			if (!preset) throw new Error("Choose a pipeline.");
 			await api.saveCustomize.mutate({
 				presetKey: preset.key,
-				pipeline: preset.stages,
+				pipeline: preset.stages.map((stage) => ({
+					...stage,
+					label: value(`${preset.key}/${stage.key}`).trim() || stage.label,
+				})),
 				advance: true,
 			});
 		}
-		if (step === "finish") redirect("/" + (await api.finish.mutate()).slug);
+		if (step === "finish")
+			redirect(`/${(await api.finish.mutate()).slug}?welcome=1`);
 		redirect(path);
 	}
 	async function back() {
@@ -85,6 +102,12 @@ export default async function OnboardingPage({
 				title={titles[step]}
 				description={`Step ${ONBOARDING_STEPS.indexOf(step) + 1} of ${ONBOARDING_STEPS.length}`}
 			/>
+			{state.invitations.length > 0 && (
+				<Link href="/invitations">Review workspace invitations</Link>
+			)}
+			{params.error === "goals" && step === "goals" && (
+				<p role="alert">Choose at least one goal.</p>
+			)}
 			<form key={step} action={save} className="grid gap-4">
 				{step === "business-type" &&
 					BUSINESS_TYPES.map((type) => (
@@ -171,19 +194,39 @@ export default async function OnboardingPage({
 				)}
 				{step === "customize" &&
 					presets.map((p) => (
-						<label key={p.key} className="grid gap-2 rounded-md border p-3">
-							<span>
-								<input
-									type="radio"
-									required
-									name="preset"
-									value={p.key}
-									defaultChecked={p.key === selected?.key}
-								/>{" "}
-								{p.label}
-							</span>
+						<div key={p.key} className="grid gap-2 rounded-md border p-3">
+							<label>
+								<span>
+									<input
+										type="radio"
+										required
+										name="preset"
+										value={p.key}
+										defaultChecked={p.key === selected?.key}
+									/>{" "}
+									{p.label}
+								</span>
+							</label>
 							<small>{p.stages.map((s) => s.label).join(" → ")}</small>
-						</label>
+							<details>
+								<summary>Edit stage names</summary>
+								{p.stages.map((stage) => (
+									<label htmlFor={p.key + stage.key} key={stage.key}>
+										{stage.label}
+										<AuthInput
+											id={p.key + stage.key}
+											name={`${p.key}/${stage.key}`}
+											defaultValue={
+												(customize.presetKey === p.key &&
+													customize.pipeline?.find((s) => s.key === stage.key)
+														?.label) ||
+												stage.label
+											}
+										/>
+									</label>
+								))}
+							</details>
+						</div>
 					))}
 				{step === "finish" && (
 					<>

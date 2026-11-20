@@ -35,7 +35,13 @@ function stubFetch(handler: (call: Call) => Promise<Response>): Call[] {
 	return calls;
 }
 
-function json(body: object, status = 200): Response {
+function json(
+	body:
+		| { id: string }
+		| { message: string; name?: string;statusCode?:number }
+		| { accepted: boolean },
+	status = 200,
+): Response {
 	return new Response(JSON.stringify(body), {
 		status,
 		headers: { "content-type": "application/json" },

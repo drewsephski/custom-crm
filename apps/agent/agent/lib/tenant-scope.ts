@@ -1,4 +1,5 @@
 import { isOrganizationId, runInTenant } from "@crm/db/tenancy";
+import { researchUser } from "./research/meter";
 import { attribute } from "./session-purpose";
 
 export const ORGANIZATION_ATTRIBUTE = "organizationId";
@@ -37,7 +38,9 @@ export async function inSessionTenant<T>(
 	ctx: ScopedContext,
 	fn: () => T | Promise<T>,
 ): Promise<T> {
-	return runInTenant(requireOrganizationOf(ctx), fn);
+	return researchUser.run(attribute(ctx, "userId"), () =>
+		runInTenant(requireOrganizationOf(ctx), fn),
+	);
 }
 
 export async function inSessionTenantOrSkip(

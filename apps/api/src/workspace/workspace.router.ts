@@ -8,6 +8,7 @@ import {
 	UseMiddlewares,
 } from "nestjs-trpc";
 import type { z } from "zod";
+import { researchForRecordInput } from "../research/research.contracts";
 import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
@@ -37,6 +38,13 @@ export class WorkspaceRouter {
 		@Inject(WorkspaceLiveService) private readonly live: WorkspaceLiveService,
 	) {}
 
+	@Query({ input: researchForRecordInput, output: workspaceLiveOutput })
+	async researchLive(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof researchForRecordInput>,
+	) {
+		return this.live.research(ctx.user.id, input);
+	}
 	@Query({
 		output: workspaceLiveOutput,
 		meta: restMeta("GET", "/workspace/members/live", ["Workspace"]),

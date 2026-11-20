@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { emailDelivery, emailEnabled } from "@crm/auth/email";
 import type { INestApplication } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
 import request from "supertest";
@@ -70,6 +71,8 @@ describe("Auth (e2e)", () => {
 
 		expect(response.body.result.data).toEqual({
 			google: isGoogleConfigured(),
+			magicLink: emailEnabled(),
+			localEmail: emailDelivery() === "console",
 			microsoft: microsoftConfigured,
 			emailPassword: isEmailPasswordEnabled(),
 			providers: [],

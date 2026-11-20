@@ -86,7 +86,9 @@ export async function runBrand({
 		},
 	});
 
-	const result = await brandByDomain(company.domain, fresh ? 0 : undefined);
+	const result = await brandByDomain(company.domain, fresh ? 0 : undefined, {
+		companyId,
+	});
 
 	if (result.outcome === "skipped") {
 		await settle(companyId, EnrichmentStatus.SKIPPED, result.reason);

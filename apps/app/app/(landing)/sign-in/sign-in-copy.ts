@@ -35,19 +35,21 @@ export const AUTH_INTENT = {
 	}
 >;
 
-const LINK_FAILURE: Record<string, string> = {
-	[AUTH_ERROR.invalidToken]:
-		"This sign-in link is expired or already used. Enter your email to get a new link.",
-	[AUTH_ERROR.signInNotAllowed]:
-		"This CRM is private. That address is not on the allow-list.",
-};
+const LINK_FAILURE = new Map<string, string>(
+	Object.entries({
+		[AUTH_ERROR.invalidToken]:
+			"This sign-in link is expired or already used. Enter your email to get a new link.",
+		[AUTH_ERROR.signInNotAllowed]:
+			"This CRM is private. That address is not on the allow-list.",
+	}),
+);
 
 const GENERIC_FAILURE = "Sign-in did not complete. Try again.";
 
 export function signInFailureMessage(code: string | undefined): string | null {
 	if (!code) return null;
 
-	return LINK_FAILURE[code] ?? GENERIC_FAILURE;
+	return LINK_FAILURE.get(code) ?? GENERIC_FAILURE;
 }
 
 const TOO_MANY_REQUESTS = 429;

@@ -1,5 +1,5 @@
 import { auth } from "@crm/auth/auth";
-import { emailEnabled } from "@crm/auth/email";
+import { emailDelivery, emailEnabled } from "@crm/auth/email";
 import {
 	isEmailPasswordEnabled,
 	isGoogleConfigured,
@@ -144,6 +144,7 @@ export class SsoService {
 			microsoft: isMicrosoftConfigured(),
 			emailPassword: isEmailPasswordEnabled(),
 			magicLink: emailEnabled(),
+			localEmail: emailDelivery() === "console",
 			providers: rows.map((row) => ({
 				providerId: row.providerId,
 				name: ssoProviderName(row.providerId),

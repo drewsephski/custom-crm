@@ -4,9 +4,11 @@ import { MAX_ATTEMPTS } from "@crm/db/agent-tasks";
 import { runAsSystem, runInTenant } from "@crm/db/tenancy";
 import { schemas } from "@crm/validation";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
+import { brandPreviewRequest } from "@crm/validation/onboarding-brand";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
 import { persistBuilderInputRequest } from "../lib/builder-input";
+import { brandByDomain } from "../lib/context-dev";
 import {
 	type AgentInputResponseDelivery,
 	builderIdFromToken,
@@ -36,6 +38,8 @@ import {
 	organizationOfRun,
 	organizationOfSubmission,
 } from "../lib/organizations";
+import { brandProfile, providerBrand } from "../lib/research/brand-evidence";
+import { publicDomain } from "../lib/research/urls";
 import { finishRun, finishStagedRun, runResultOf } from "../lib/run-runtime";
 import { attribute } from "../lib/session-purpose";
 import { createSlackChannel } from "../lib/slack-membership";
@@ -173,6 +177,27 @@ export default defineChannel({
 			);
 		}),
 
+		POST("/internal/crm/brand-preview", async (request) => {
+			if (!authorised(request))
+				return new Response("Unauthorized", { status: 401 });
+			const input = brandPreviewRequest.safeParse(
+				await request.json().catch(() => null),
+			);
+			if (!input.success) return new Response("Invalid input", { status: 400 });
+			const domain = publicDomain(input.data.website);
+			if (!domain) return Response.json({ status: "not_found" });
+			const result = await brandByDomain(domain, undefined, {
+				previewUser: input.data.userId,
+			});
+			if (result.outcome !== "found")
+				return Response.json({
+					status: result.outcome === "skipped" ? "unavailable" : "failed",
+				});
+			const brand = brandProfile(providerBrand.parse(result.raw), domain);
+			return Response.json(
+				brand ? { status: "ready", brand } : { status: "not_found" },
+			);
+		}),
 		POST("/internal/crm/dispatch", async (request, { from, waitUntil }) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });

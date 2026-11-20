@@ -54,12 +54,10 @@ export function defaultProviderClient(): ProviderClient | null {
 	return contextDevClient()?.withOptions({ maxRetries: 0 }) ?? null;
 }
 
-export function creditsConsumed(raw: unknown): number | null {
-	const parsed = metered.safeParse(raw);
-	return parsed.success
-		? Math.ceil(parsed.data.key_metadata.credits_consumed)
-		: null;
-}
+export const creditMetadata = metered
+	.transform((value) => Math.ceil(value.key_metadata.credits_consumed))
+	.nullable()
+	.catch(null);
 
 export function creditsFromHeaders(
 	headers: Headers | null | undefined,

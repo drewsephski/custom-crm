@@ -73,7 +73,18 @@ async function clean() {
 	});
 }
 
-function post(path: string, body: object, ip: string): Promise<Response> {
+function post(
+	path: string,
+	body:
+		| {
+				email: string;
+				callbackURL: string;
+				newUserCallbackURL: string;
+				errorCallbackURL: string;
+		  }
+		| { provider: string; idToken: { token: string } },
+	ip: string,
+): Promise<Response> {
 	return auth.handler(
 		new Request(`${apiUrl}/api/auth${path}`, {
 			method: "POST",
@@ -152,9 +163,9 @@ function userByEmail(email: string) {
 
 function base64Url(value: ArrayBuffer | string): string {
 	const bytes =
-		typeof value === "string"
-			? new TextEncoder().encode(value)
-			: new Uint8Array(value);
+		value instanceof ArrayBuffer
+			? new Uint8Array(value)
+			: new TextEncoder().encode(value);
 
 	return Buffer.from(bytes).toString("base64url");
 }

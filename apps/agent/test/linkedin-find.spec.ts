@@ -3,7 +3,6 @@ import { linkedinSlug } from "../agent/lib/linkedin";
 import {
 	candidateFrom,
 	candidateSlugs,
-	guessedSlugs,
 	searchedSlugs,
 } from "../agent/lib/linkedin-find";
 import type { Person } from "../agent/lib/people";
@@ -38,10 +37,6 @@ describe("finding a LinkedIn profile by name", () => {
 		expect(linkedinSlug("https://www.linkedin.com/company/oxy")).toBeNull();
 	});
 
-	it("guesses the usual vanity addresses", () => {
-		expect(guessedSlugs(sam)).toEqual(["sam-stehno", "samstehno"]);
-	});
-
 	it("keeps only search results that carry the surname", () => {
 		expect(
 			searchedSlugs(sam, [
@@ -55,11 +50,10 @@ describe("finding a LinkedIn profile by name", () => {
 		).toEqual(["x-9"]);
 	});
 
-	it("tries an exact name slug first, then the guesses, and caps the reads", () => {
+	it("tries an exact name slug first, and uses only returned profiles", () => {
 		expect(candidateSlugs(sam, ["pavel-stehno-1", "sam-stehno-42"])).toEqual([
 			"sam-stehno-42",
-			"sam-stehno",
-			"samstehno",
+			"pavel-stehno-1",
 		]);
 	});
 

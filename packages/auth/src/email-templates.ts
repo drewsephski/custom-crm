@@ -47,10 +47,7 @@ function singleLine(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
-function render({ heading, lines, action, footnote }: Layout): {
-	text: string;
-	html: string;
-} {
+function render({ heading, lines, action, footnote }: Layout) {
 	const text = [
 		heading,
 		...lines,

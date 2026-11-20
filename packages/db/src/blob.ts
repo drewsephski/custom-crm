@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { isMirrored } from "./images";
-import { objectStorageConfig, putPublicObject } from "./object-storage";
+import {
+	objectStorageConfig,
+	privateStorageConfig,
+	putImageObject,
+} from "./object-storage";
 import { safeFetch } from "./safe-fetch";
 import { currentOrganizationId } from "./tenancy";
 
@@ -38,6 +42,7 @@ export function objectKey(
 
 export function blobEnabled(): boolean {
 	return (
+		privateStorageConfig() !== null ||
 		objectStorageConfig() !== null ||
 		Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim())
 	);
@@ -68,8 +73,15 @@ export async function mirror(
 			.slice(0, 12);
 
 		const key = objectKey(prefix, digest, extension);
+		if (currentOrganizationId() && process.env.S3_PRIVATE_BUCKET?.trim()) {
+			const storage = privateStorageConfig();
+			if (!storage) return null;
+			const origin =
+				process.env.APP_URL?.split(",")[0]?.trim() || "http://localhost:3000";
+			return await putImageObject(storage, key, bytes, type, origin);
+		}
 		const storage = objectStorageConfig();
-		if (storage) return await putPublicObject(storage, key, bytes, type);
+		if (storage) return await putImageObject(storage, key, bytes, type);
 
 		const { put } = await import("@vercel/blob");
 

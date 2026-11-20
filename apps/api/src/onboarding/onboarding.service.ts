@@ -89,13 +89,6 @@ type OpenFinish = {
 
 type FinishStart = OpenFinish | { kind: "done"; result: FinishResult };
 
-function isUniqueViolation(error: unknown): boolean {
-	return (
-		error instanceof Prisma.PrismaClientKnownRequestError &&
-		error.code === "P2002"
-	);
-}
-
 function reviewed(
 	preset: SaveCustomizeInput["presetKey"],
 	context: OnboardingContext,
@@ -410,7 +403,7 @@ export class OnboardingService {
 					config,
 					configVersionId: session.configVersionId,
 				};
-			}),
+			}, ONBOARDING.transaction),
 		);
 	}
 
@@ -545,7 +538,7 @@ export class OnboardingService {
 				});
 
 				return { slug: organization.slug, pipelineApplied };
-			}),
+			}, ONBOARDING.transaction),
 		);
 	}
 
@@ -591,7 +584,7 @@ export class OnboardingService {
 				});
 
 				return progressOf(readSession(row));
-			}),
+			}, ONBOARDING.transaction),
 		);
 	}
 
@@ -663,9 +656,11 @@ export class OnboardingService {
 
 			return readSession(row);
 		} catch (error) {
-			const open = isUniqueViolation(error)
-				? await this.openSession(userId)
-				: null;
+			const open =
+				error instanceof Prisma.PrismaClientKnownRequestError &&
+				error.code === "P2002"
+					? await this.openSession(userId)
+					: null;
 			if (open) return open;
 			throw error;
 		}

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { UNTRUSTED } from "./untrusted-config";
 
 const INVISIBLE = /[​-‍⁠﻿]/g;
@@ -18,8 +19,9 @@ function capped(text: string): string {
 		: text;
 }
 
-export function untrusted(source: string, content: unknown): string {
-	const text = typeof content === "string" ? content : JSON.stringify(content);
+export function untrusted<T>(source: string, content: T): string {
+	const parsed = z.string().safeParse(content);
+	const text = parsed.success ? parsed.data : JSON.stringify(content);
 
 	return [
 		`${UNTRUSTED.open} source="${neutralised(source).replace(/"/g, "'")}">`,

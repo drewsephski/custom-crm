@@ -33,6 +33,8 @@ A local Postgres still works: `docker compose up -d` and
 
 ## Neon
 
+Set S3_PRIVATE_BUCKET to the private uploads bucket for workspace images. The app checks membership before issuing a one-minute signed read. Previous public image URLs continue to work.
+
 `neon.ts` declares the Neon services: Postgres, the `assets` bucket, the `cron`
 function and Realtime. `.neon` pins the project and branch and is not committed.
 
@@ -44,10 +46,9 @@ function and Realtime. `.neon` pins the project and branch and is not committed.
 
 - **`DATABASE_URL` is the pooled host.** `packages/db/src/database-host.ts` strips
   `-pooler` for Prisma's CLI, so migrations use the direct host of the same
-  database. There is no second variable to drift. Tenant scope is transaction-local
+  database. Set DATABASE_URL_UNPOOLED to provide direct credentials. Prisma checks the endpoint and database against DATABASE_URL. Tenant scope is transaction-local
   (`docs/tenancy.md`), so the pooler's transaction mode is safe.
-- **The live event stream needs the direct host.** `LISTEN` cannot run through a
-  transaction pooler. The API derives the direct host the same way.
+- **Live research uses Neon Realtime.** The API seals a record query for the signed-in member. Each query checks current membership. The record panel also polls the authenticated API.
 - **Every query pays the network round trip.** A laptop far from the region is
   slow: 72 migrations take about 110 seconds at a 90 ms round trip.
 - **Function triggers are disabled until `CRON_TARGET_URL` is set**, so Vercel

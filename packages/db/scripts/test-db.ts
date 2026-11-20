@@ -165,7 +165,14 @@ function drifted(target: string): boolean {
 			SCHEMA,
 			"--exit-code",
 		],
-		{ stdio: "ignore", env: { ...process.env, DATABASE_URL: target } },
+		{
+			stdio: "ignore",
+			env: {
+				...process.env,
+				DATABASE_URL: target,
+				DATABASE_URL_UNPOOLED: directDatabaseUrl(target),
+			},
+		},
 	);
 
 	return result.status === 2;
@@ -174,7 +181,11 @@ function drifted(target: string): boolean {
 function migrate(target: string): void {
 	const result = spawnSync("prisma", ["migrate", "deploy"], {
 		stdio: "inherit",
-		env: { ...process.env, DATABASE_URL: target },
+		env: {
+			...process.env,
+			DATABASE_URL: target,
+			DATABASE_URL_UNPOOLED: directDatabaseUrl(target),
+		},
 	});
 
 	if (result.error) {

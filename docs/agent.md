@@ -91,15 +91,11 @@ it after writing any `AgentTask`.
   health, so a task running under a session nobody recorded is visible.
 - **`AGENT_BRIDGE_SECRET` unset refuses rather than opens.**
 
-### `POST /internal/crm/verify-key`
+### Onboarding brand preview
 
-Probes a candidate Context key → `valid`/`invalid`/`unknown`. No session, no model, no
-task row; exists because the API may not call Context.
-
-- **The probe is free and chosen to be** — a free-provider address gets a `422` before
-  billable resolution. **Do not point it at a real domain**: ten credits per typo.
-- **`classifyKey` rejects on `401` and nothing else.**
-- **The candidate key, never the stored one.**
+The API sends a verified user's website to `POST /internal/crm/brand-preview`.
+The agent checks the bridge secret and validates the website.
+The agent reserves platform credits before the lookup. The user reviews the suggested details before setup continues.
 
 ### Blank fields are filled on the dispatch tick
 

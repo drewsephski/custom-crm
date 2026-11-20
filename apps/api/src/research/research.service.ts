@@ -23,10 +23,6 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { z } from "zod";
-import type { CompanyUpdateInput } from "../companies/companies.contracts";
-import { CompaniesService } from "../companies/companies.service";
-import type { ContactUpdateInput } from "../contacts/contacts.contracts";
-import { ContactsService } from "../contacts/contacts.service";
 import { InjectDatabase } from "../database/database.constants";
 import type {
 	ResearchDecideFindingInput,
@@ -77,7 +73,7 @@ const lockedResult = z.object({
 	id: z.string(),
 	companyId: z.string().nullable(),
 	contactId: z.string().nullable(),
-	findings: z.unknown(),
+	findings: z.json(),
 	review: z.enum(
 		Object.values(ResearchReview) as [ResearchReview, ...ResearchReview[]],
 	),
@@ -110,8 +106,6 @@ export class ResearchService {
 
 	constructor(
 		@InjectDatabase() private readonly db: Db,
-		private readonly companies: CompaniesService,
-		private readonly contacts: ContactsService,
 	) {}
 
 	async forRecord(
@@ -281,7 +275,8 @@ export class ResearchService {
 					data: {
 						findings: researchFindings.parse({ ...findings, items }),
 						review,
-						...(open ? {} : { reviewedById: userId, reviewedAt: new Date() }),
+						reviewedById: open ? undefined : userId,
+						reviewedAt: open ? undefined : new Date(),
 					},
 				});
 
@@ -346,10 +341,9 @@ export class ResearchService {
 			if (sameValue(record[column], value)) return false;
 			if (!sameValue(record[column], item.current)) throw this.changed(item);
 
-			const data: CompanyUpdateInput = {};
-			data[column] = value;
-			await this.companies.update(target.id, data);
-			return true;
+			const written=await tx.company.updateMany({where:{id:target.id,[column]:record[column]},data:{[column]:value}});
+ if(written.count!==1)throw this.changed(item);
+ return true;
 		}
 
 		const column = contactAcceptColumn(item.field);
@@ -366,10 +360,9 @@ export class ResearchService {
 		if (sameValue(record[column], value)) return false;
 		if (!sameValue(record[column], item.current)) throw this.changed(item);
 
-		const data: ContactUpdateInput = {};
-		data[column] = value;
-		await this.contacts.update(target.id, data);
-		return true;
+		const written=await tx.contact.updateMany({where:{id:target.id,[column]:record[column]},data:{[column]:value}});
+ if(written.count!==1)throw this.changed(item);
+ return true;
 	}
 
 	private notAcceptable(item: ResearchFinding): BadRequestException {
@@ -384,7 +377,10 @@ export class ResearchService {
 		);
 	}
 
-	private readFindings(resultId: string, value: unknown): ResearchFindings {
+	private readFindings(
+		resultId: string,
+		value: Prisma.JsonValue,
+	): ResearchFindings {
 		if (value === null) return EMPTY_FINDINGS;
 
 		const parsed = researchFindings.safeParse(value);

@@ -27,6 +27,7 @@ export type OperationSettings = {
 export type WindowLimit = { limit: number; windowMs: number };
 
 export type ResearchSettings = {
+	cache: { maxEntries: number };
 	provider: string;
 	operations: Record<ResearchOperation, OperationSettings>;
 	answers: { fastCredits: number; ultraCredits: number };
@@ -63,6 +64,7 @@ export type ResearchSettings = {
 };
 
 export const RESEARCH = {
+	cache: { maxEntries: 256 },
 	provider: "context.dev",
 
 	operations: {

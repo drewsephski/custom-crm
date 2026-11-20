@@ -21,6 +21,7 @@ type SignInOptions = {
 	microsoft: boolean;
 	emailPassword: boolean;
 	magicLink: boolean;
+	localEmail: boolean;
 	providers: SsoProvider[];
 };
 
@@ -51,7 +52,7 @@ async function currentSession() {
 }
 
 function single(value: string | string[] | undefined): string | undefined {
-	return typeof value === "string" ? value : undefined;
+	return Array.isArray(value) ? undefined : value;
 }
 
 export async function SignInMethods({
@@ -137,7 +138,11 @@ export async function SignInMethods({
 			) : null}
 
 			{email ? (
-				<EmailSignIn next={next} submitLabel={copy.emailAction} />
+				<EmailSignIn
+					localEmail={options?.localEmail ?? false}
+					next={next}
+					submitLabel={copy.emailAction}
+				/>
 			) : null}
 			{passwords ? <PasswordSignIn next={next} /> : null}
 

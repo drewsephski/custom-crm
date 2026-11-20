@@ -1,5 +1,6 @@
 import type ContextDev from "context.dev";
 import { APIError } from "context.dev/core/error";
+import type { BrandRetrieveResponse } from "context.dev/resources/brand";
 import { z } from "zod";
 import {
 	contextDevApiKey,
@@ -7,6 +8,9 @@ import {
 	contextDevConfigured,
 } from "./context-client";
 import { CONTEXT } from "./context-config";
+import { cachedLookup, metered } from "./research/meter";
+import { RESEARCH } from "./research/research-config";
+import { publicDomain } from "./research/urls";
 
 export type JsonSchema = {
 	type?:
@@ -80,14 +84,23 @@ export function contextDevEnabled(): boolean {
 export async function brandByDomain(
 	domain: string,
 	maxAgeMs?: number,
+	target?: { companyId?: string; previewUser?: string },
 ): Promise<LookupResult> {
+	if (!publicDomain(domain))
+		return {
+			outcome: "skipped",
+			reason: "The business needs a public domain.",
+		};
 	const params = {
 		type: "by_domain",
 		domain,
 		timeoutMS: CONTEXT.timeoutMs,
 	} as const;
 
-	return lookup(maxAgeMs === undefined ? params : { ...params, maxAgeMs });
+	return lookup(
+		maxAgeMs === undefined ? params : { ...params, maxAgeMs },
+		target,
+	);
 }
 
 export async function extract(
@@ -97,19 +110,31 @@ export async function extract(
 ): Promise<
 	{ outcome: "found"; data: unknown } | { outcome: "failed"; reason: string }
 > {
+	if (!publicDomain(url))
+		return { outcome: "failed", reason: "Enter a public website URL." };
 	const api = contextDev();
 	if (!api) {
 		return { outcome: "failed", reason: "Context.dev is not configured." };
 	}
 
 	try {
-		const response = await api.web.extract({
-			url,
-			schema,
-			instructions,
-			maxPages: 8,
-			timeoutMS: CONTEXT.timeoutMs,
-		});
+		const response = await metered(
+			{
+				operation: "web.extract",
+				key: JSON.stringify([url, schema, instructions]),
+				estimate:
+					RESEARCH.extract.maxPages *
+					RESEARCH.operations["web.extract"].estimateCredits,
+			},
+			() =>
+				api.web.extract({
+					url,
+					schema,
+					instructions,
+					maxPages: RESEARCH.extract.maxPages,
+					timeoutMS: CONTEXT.timeoutMs,
+				}),
+		);
 		return { outcome: "found", data: response.data };
 	} catch (error) {
 		return { outcome: "failed", reason: describe(error) };
@@ -135,10 +160,18 @@ export async function search(
 	};
 
 	try {
-		const response = await api.web.search(
-			options.excludeDomains
-				? { ...params, excludeDomains: options.excludeDomains }
-				: params,
+		const response = await metered(
+			{
+				operation: "web.search",
+				key: JSON.stringify(params),
+				estimate: params.numResults + Math.ceil(params.numResults / 10),
+			},
+			() =>
+				api.web.search(
+					options.excludeDomains
+						? { ...params, excludeDomains: options.excludeDomains }
+						: params,
+				),
 		);
 
 		const results = (response.results ?? []).map((result) => ({
@@ -157,8 +190,10 @@ export async function search(
 	}
 }
 
+const cachedBrand = cachedLookup<BrandRetrieveResponse>();
 async function lookup(
 	params: Parameters<ContextDev["brand"]["retrieve"]>[0],
+	target?: { companyId?: string; previewUser?: string },
 ): Promise<LookupResult> {
 	const api = contextDev();
 	if (!api) {
@@ -166,7 +201,17 @@ async function lookup(
 	}
 
 	try {
-		const response = await api.brand.retrieve(params);
+		const response = await cachedBrand(
+			{
+				operation: "brand.retrieve",
+				domain: params.type === "by_domain" ? params.domain : undefined,
+				key: JSON.stringify(params),
+				target: { companyId: target?.companyId },
+				previewUser: target?.previewUser,
+			},
+			() => api.brand.retrieve(params),
+			"maxAgeMs" in params && params.maxAgeMs === 0,
+		);
 		const brand = response.brand as Brand | undefined;
 
 		if (!brand) return { outcome: "skipped", reason: "No brand matched." };

@@ -137,9 +137,8 @@ this one.
 **Research is metered in provider credits.** Each workspace has a monthly allowance and
 the install has a monthly ceiling. A request reserves credits before the provider is
 called and settles with the amount the provider reports. Identical requests are
-deduplicated, company brand data is cached across workspaces by domain, and a request
-that does not fit is refused with a plain message. Each request is recorded with its
-sources, and a finding that differs from what a person typed becomes a suggestion to
+deduplicated for cached brand and profile lookups within the current workspace, and a request
+that does not fit is refused with a plain message. Company brand and answer results include their sources, and a finding that differs from what a person typed becomes a suggestion to
 accept or dismiss. Status changes reach the browser through a live event stream.
 
 **The sandbox has no network and no database.** Turning it on is what gives the model
