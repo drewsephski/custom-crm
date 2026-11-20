@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isMirrored } from "./images";
 import { objectStorageConfig, putPublicObject } from "./object-storage";
 import { safeFetch } from "./safe-fetch";
+import { currentOrganizationId } from "./tenancy";
 
 export { isMirrored, isOptimizable } from "./images";
 
@@ -20,6 +21,20 @@ const ALLOWED: ExtensionByMediaType = {
 	"image/x-icon": "ico",
 	"image/vnd.microsoft.icon": "ico",
 };
+
+export const WORKSPACE_KEY_PREFIX = "workspaces";
+
+export function objectKey(
+	prefix: string,
+	digest: string,
+	extension: string,
+	organizationId: string | undefined = currentOrganizationId(),
+): string {
+	const name = `${prefix}-${digest}.${extension}`;
+	return organizationId
+		? `${WORKSPACE_KEY_PREFIX}/${organizationId}/${name}`
+		: name;
+}
 
 export function blobEnabled(): boolean {
 	return (
@@ -52,7 +67,7 @@ export async function mirror(
 			.digest("hex")
 			.slice(0, 12);
 
-		const key = `${prefix}-${digest}.${extension}`;
+		const key = objectKey(prefix, digest, extension);
 		const storage = objectStorageConfig();
 		if (storage) return await putPublicObject(storage, key, bytes, type);
 
