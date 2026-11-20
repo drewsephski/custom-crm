@@ -1,4 +1,4 @@
-import { proxy } from "./lib/workspace-proxy";
+import { proxy } from "./lib/workspace-proxy.js";
 
 export default function workspaceProxy(request) {
 	return proxy(request);

@@ -3,7 +3,7 @@ import {
 	WORKSPACE_HEADER,
 } from "@crm/auth/workspace-header";
 import { z } from "zod";
-import { API_URL } from "./env";
+import { API_URL } from "./env.js";
 
 export const ONBOARDING_PATH = "/onboarding";
 

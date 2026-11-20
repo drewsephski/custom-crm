@@ -1,7 +1,7 @@
 import { AUTH_COOKIE_PREFIX } from "@crm/auth/cookies";
 import { WORKSPACE_HEADER } from "@crm/auth/workspace-header";
 import { getSessionCookie } from "better-auth/cookies";
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import {
 	GET_STARTED_PATH,
 	LANDING_PATH,
@@ -9,9 +9,9 @@ import {
 	SIGN_IN_PATH,
 	safeNextPath,
 	signInPathFor,
-} from "./auth-redirect";
-import { ONBOARDING_PATH, readWorkspaceGate } from "./onboarding";
-import { workspaceUrl } from "./workspace-url";
+} from "./auth-redirect.js";
+import { ONBOARDING_PATH, readWorkspaceGate } from "./onboarding.js";
+import { workspaceUrl } from "./workspace-url.js";
 
 const AUTH_PAGES = [SIGN_IN_PATH, GET_STARTED_PATH];
 
