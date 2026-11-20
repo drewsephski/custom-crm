@@ -25,7 +25,8 @@
 			"root": "apps/api",
 			"framework": "nestjs",
 			"entrypoint": "src/main.ts",
-			"buildCommand": "bun run build && node scripts/release-database.mjs",
+			"outputDirectory": "dist/vercel",
+			"buildCommand": "node scripts/build-func.mjs && node scripts/release-database.mjs",
 			"devCommand": "AGENT_URL=\"$API_URL\" bun src/main.ts"
 		},
 		"agent": {

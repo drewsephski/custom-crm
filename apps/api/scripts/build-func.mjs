@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
 	cpSync,
 	existsSync,
@@ -7,15 +7,13 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
-	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const apiDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(dirname(apiDir));
-const outDir = join(repoRoot, ".vercel/output");
-const funcDir = join(outDir, "functions/api/index.func");
+const funcDir = join(apiDir, "dist/vercel");
 const bun = process.env.BUN_BIN || "bun";
 
 const EXTERNALS = [
@@ -40,30 +38,22 @@ const VENDOR_ROOTS = [
 	"class-validator",
 ];
 
-rmSync(outDir, { recursive: true, force: true });
+rmSync(funcDir, { recursive: true, force: true });
 mkdirSync(funcDir, { recursive: true });
 
 console.log("• bundling function with bun build...");
-execSync(
+execFileSync(
+	bun,
 	[
-		`${bun} build api/index.ts`,
+		"build",
+		"src/main.ts",
 		"--target=node",
 		"--format=esm",
-		`--outfile=${JSON.stringify(join(funcDir, "index.mjs"))}`,
-		...EXTERNALS.map((e) => `--external ${e}`),
-	].join(" "),
-	{
-		cwd: apiDir,
-		stdio: "inherit",
-		env: { ...process.env, NODE_ENV: "production" },
-	},
-);
-
-console.log("• pinning NODE_ENV in the bundle...");
-const entry = join(funcDir, "index.mjs");
-writeFileSync(
-	entry,
-	`process.env.NODE_ENV ??= "production";\n${readFileSync(entry, "utf8")}`,
+		"--outfile",
+		join(funcDir, "main.mjs"),
+		...EXTERNALS.flatMap((name) => ["--external", name]),
+	],
+	{ cwd: apiDir, stdio: "inherit", env: { ...process.env, NODE_ENV: "production" } },
 );
 
 console.log("• vendoring runtime-resolved dependencies...");
@@ -155,36 +145,4 @@ for (const root of VENDOR_ROOTS) {
 }
 console.log(`  vendored ${vendorCount} packages`);
 
-writeFileSync(
-	join(funcDir, "package.json"),
-	JSON.stringify({ type: "module" }),
-);
-writeFileSync(
-	join(funcDir, ".vc-config.json"),
-	JSON.stringify({
-		runtime: "nodejs22.x",
-		handler: "index.mjs",
-		launcherType: "Nodejs",
-		shouldAddHelpers: false,
-		maxDuration: 60,
-		memory: 1769,
-		environment: { NODE_ENV: "production" },
-		regions: ["iad1"],
-	}),
-);
-const { crons } = JSON.parse(
-	readFileSync(join(repoRoot, "vercel.json"), "utf8"),
-);
-
-writeFileSync(
-	join(outDir, "config.json"),
-	JSON.stringify({
-		version: 3,
-		routes: [{ src: "/(.*)", dest: "/api/index" }],
-		crons,
-	}),
-);
-
-console.log(`✓ built ${outDir}`);
-
-await import("./release-database.mjs");
+console.log(`✓ built ${funcDir}`);
