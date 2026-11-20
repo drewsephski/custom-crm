@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isMirrored } from "./images";
+import { objectStorageConfig, putPublicObject } from "./object-storage";
 import { safeFetch } from "./safe-fetch";
 
 export { isMirrored, isOptimizable } from "./images";
@@ -21,7 +22,10 @@ const ALLOWED: ExtensionByMediaType = {
 };
 
 export function blobEnabled(): boolean {
-	return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
+	return (
+		objectStorageConfig() !== null ||
+		Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim())
+	);
 }
 
 export async function mirror(
@@ -48,9 +52,13 @@ export async function mirror(
 			.digest("hex")
 			.slice(0, 12);
 
+		const key = `${prefix}-${digest}.${extension}`;
+		const storage = objectStorageConfig();
+		if (storage) return await putPublicObject(storage, key, bytes, type);
+
 		const { put } = await import("@vercel/blob");
 
-		const blob = await put(`${prefix}-${digest}.${extension}`, bytes, {
+		const blob = await put(key, bytes, {
 			access: "public",
 			contentType: type,
 			addRandomSuffix: false,

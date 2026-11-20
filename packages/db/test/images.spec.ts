@@ -8,6 +8,22 @@ describe("isMirrored", () => {
 		expect(isMirrored(`${OURS}/contacts/c1-9f8e.jpg`)).toBe(true);
 	});
 
+	it("recognises a Neon storage endpoint, and only that kind of Neon host", () => {
+		expect(
+			isMirrored(
+				"https://br-cool-lab-123.storage.c-8.us-east-2.aws.neon.tech/assets/contacts/c1-9f8e.jpg",
+			),
+		).toBe(true);
+		expect(
+			isMirrored(
+				"https://br-cool-lab-123-cron.compute.c-8.us-east-2.aws.neon.tech/x.jpg",
+			),
+		).toBe(false);
+		expect(
+			isMirrored("https://evil.com/storage.c-8.us-east-2.aws.neon.tech/x.jpg"),
+		).toBe(false);
+	});
+
 	it("does not recognise somebody else's CDN", () => {
 		expect(isMirrored("https://media.licdn.com/dms/image/x.jpg")).toBe(false);
 		expect(isMirrored("https://lh3.googleusercontent.com/a/x=s96-c")).toBe(

@@ -24,6 +24,29 @@ run needs `db:migrate` only for the seed that follows it. When the database and
 they do not match — reconcile with `db:migrate`, or `db:reset` when the divergence
 is an edited migration that has already been applied.
 
+## Neon instead of Docker
+
+`neon.ts` declares the Neon services: Postgres, the `assets` bucket, the `cron`
+function and Realtime. `.neon` pins the project and branch and is not committed.
+
+```sh
+neon link --project-id <id> --branch <branch>   # writes .neon, pulls env into .env
+neon deploy --env .env                          # applies neon.ts, pulls env again
+bun run db:deploy && bun run db:seed
+```
+
+- **`DATABASE_URL` is the pooled host.** `packages/db/src/database-host.ts` strips
+  `-pooler` for Prisma's CLI, so migrations use the direct host of the same
+  database. There is no second variable to drift.
+- **The guard still refuses a remote host.** Name the development host in
+  `DEV_DATABASE_HOSTS`. A different host in `.env.local` is still refused.
+- **Every query pays the network round trip.** A laptop far from the region is
+  slow: 69 migrations took 100 seconds at a 90 ms round trip.
+- **The test suite stays on a local database.** `TEST_DATABASE_URL` keeps the
+  `_test` rule, and the suite is too slow over a remote round trip.
+- **Function triggers are disabled until `CRON_TARGET_URL` is set**, so Vercel
+  crons and Neon triggers never run the same job twice by default.
+
 ## Google Cloud
 
 - **Enable the Gmail API and the Google Calendar API** on the project.

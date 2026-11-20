@@ -34,6 +34,24 @@ metadata. The root file's comment has the whole account.
 in `packages/db/src/pool-config.ts`. On serverless every instance has its own pool,
 so keep instances times the maximum under the database's connection limit.
 
+## Neon
+
+`docs/setup.md` has the commands. The variables, all optional:
+
+| Variable | What it adds |
+| --- | --- |
+| `DEV_DATABASE_HOSTS` | Remote development hosts the local-database guard accepts |
+| `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_PUBLIC_BUCKET` | Picture storage on an S3 API. `packages/db/src/object-storage.ts` |
+| `NEON_REALTIME_URL`, `NEON_REALTIME_SECRET` | Live Settings → Members. `workspace.membersLive` |
+| `CRON_TARGET_URL` | The public API URL the `cron` function calls. Read by `neon.ts` only |
+
+- **Realtime refuses any table with row-level security.** Every tenant table has
+  it, so only `member` and `invitation` are live. The sealed query checks the
+  viewer's membership itself, and invitations need an owner or an admin.
+- **The live query is a signal, not the data.** It carries ids and a status. A
+  change invalidates the tRPC queries, which keep every rule they already have.
+- **`isMirrored` recognises both stores** by host: Vercel Blob and Neon storage.
+
 ## Required
 
 `DATABASE_URL`, `BETTER_AUTH_SECRET`. Everything else has a localhost default or is

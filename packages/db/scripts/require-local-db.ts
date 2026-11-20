@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseEnv } from "@crm/env";
+import {
+	DATABASE_HOST,
+	databaseHost,
+	isLocalHost,
+	parseDevHosts,
+} from "../src/database-host";
 
-const LOCAL_HOSTS = new Set([
-	"localhost",
-	"127.0.0.1",
-	"::1",
-	"[::1]",
-	"0.0.0.0",
-]);
+const ROOT_ENV_FILES = [".env.local", ".env"] as const;
 
 const command = process.argv[2] ?? "this command";
+const rootEnv = readRootEnv();
 const resolved = resolveDatabaseUrl();
 
 if (!resolved) {
@@ -21,9 +22,16 @@ if (!resolved) {
 	process.exit(1);
 }
 
-const host = hostOf(resolved.url);
+const host = databaseHost(resolved.url);
 
-if (LOCAL_HOSTS.has(host)) process.exit(0);
+if (isLocalHost(host)) process.exit(0);
+
+if (devHosts().includes(host.toLowerCase())) {
+	console.warn(
+		`\n  ${command} is running against ${host}, a development database named in ${DATABASE_HOST.devHostsVariable}.\n`,
+	);
+	process.exit(0);
+}
 
 if (process.env.ALLOW_REMOTE_DB === "1") {
 	console.warn(`\n  ⚠ ${command} is running against ${host} — not local.\n`);
@@ -52,28 +60,49 @@ console.error(
 		"",
 		`    ALLOW_REMOTE_DB=1 bun run ${command}`,
 		"",
+		"  If this host is a development database, name it in .env:",
+		"",
+		`    ${DATABASE_HOST.devHostsVariable}="${host}"`,
+		"",
 	].join("\n"),
 );
 
 process.exit(1);
 
-function resolveDatabaseUrl(): { url: string; from: string } | null {
-	const root = workspaceRoot();
+type RootEnvFile = { file: string; values: Record<string, string> };
 
-	if (root) {
-		for (const file of [".env.local", ".env"]) {
-			const path = join(root, file);
-			try {
-				const url = parseEnv(readFileSync(path, "utf8")).DATABASE_URL;
-				if (url) return { url, from: file };
-			} catch {}
-		}
+function readRootEnv(): RootEnvFile[] {
+	const root = workspaceRoot();
+	if (!root) return [];
+
+	const files: RootEnvFile[] = [];
+	for (const file of ROOT_ENV_FILES) {
+		try {
+			files.push({
+				file,
+				values: parseEnv(readFileSync(join(root, file), "utf8")),
+			});
+		} catch {}
+	}
+	return files;
+}
+
+function resolveDatabaseUrl(): { url: string; from: string } | null {
+	for (const { file, values } of rootEnv) {
+		if (values.DATABASE_URL) return { url: values.DATABASE_URL, from: file };
 	}
 
 	const fromEnvironment = process.env.DATABASE_URL;
 	return fromEnvironment
 		? { url: fromEnvironment, from: "the environment" }
 		: null;
+}
+
+function devHosts(): string[] {
+	const declared = rootEnv.find(
+		({ values }) => values[DATABASE_HOST.devHostsVariable] !== undefined,
+	);
+	return parseDevHosts(declared?.values[DATABASE_HOST.devHostsVariable]);
 }
 
 function workspaceRoot(): string | null {
@@ -90,13 +119,5 @@ function workspaceRoot(): string | null {
 		const parent = dirname(directory);
 		if (parent === directory) return null;
 		directory = parent;
-	}
-}
-
-function hostOf(value: string): string {
-	try {
-		return new URL(value).hostname;
-	} catch {
-		return value;
 	}
 }

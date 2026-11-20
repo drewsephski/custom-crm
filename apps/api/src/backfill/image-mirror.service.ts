@@ -1,9 +1,9 @@
 import type { Db, Prisma } from "@crm/db";
 import { blobEnabled, mirror } from "@crm/db/blob";
 import {
-	BLOB_HOST_SUFFIX,
 	COMPANY_IMAGE_FIELDS,
 	type CompanyImageField,
+	MIRROR_URL_MARKERS,
 } from "@crm/db/images";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
@@ -14,12 +14,18 @@ type CompanyImageRow = Record<CompanyImageField, string | null>;
 
 const EXTERNAL_CONTACT_IMAGE: Prisma.ContactWhereInput = {
 	imageUrl: { not: null },
-	NOT: { imageUrl: { contains: BLOB_HOST_SUFFIX } },
+	NOT: {
+		OR: MIRROR_URL_MARKERS.map((marker) => ({
+			imageUrl: { contains: marker },
+		})),
+	},
 };
 
 const EXTERNAL_USER_IMAGE: Prisma.UserWhereInput = {
 	image: { not: null },
-	NOT: { image: { contains: BLOB_HOST_SUFFIX } },
+	NOT: {
+		OR: MIRROR_URL_MARKERS.map((marker) => ({ image: { contains: marker } })),
+	},
 };
 
 export type ImageMirrorResult = {
@@ -157,10 +163,13 @@ export class ImageMirrorService {
 function externalCompanyImage(
 	field: CompanyImageField,
 ): Prisma.CompanyWhereInput {
-	const mirrored: Prisma.CompanyWhereInput = {};
-	mirrored[field] = { contains: BLOB_HOST_SUFFIX };
+	const mirrored = MIRROR_URL_MARKERS.map((marker) => {
+		const match: Prisma.CompanyWhereInput = {};
+		match[field] = { contains: marker };
+		return match;
+	});
 
-	const where: Prisma.CompanyWhereInput = { NOT: mirrored };
+	const where: Prisma.CompanyWhereInput = { NOT: { OR: mirrored } };
 	where[field] = { not: null };
 
 	return where;

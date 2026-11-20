@@ -149,6 +149,34 @@ export class EnvironmentVariables {
 	BLOB_READ_WRITE_TOKEN?: string;
 
 	@IsOptional()
+	@IsString()
+	AWS_ENDPOINT_URL_S3?: string;
+
+	@IsOptional()
+	@IsString()
+	AWS_ACCESS_KEY_ID?: string;
+
+	@IsOptional()
+	@IsString()
+	AWS_SECRET_ACCESS_KEY?: string;
+
+	@IsOptional()
+	@IsString()
+	AWS_REGION?: string;
+
+	@IsOptional()
+	@IsString()
+	S3_PUBLIC_BUCKET?: string;
+
+	@IsOptional()
+	@IsString()
+	NEON_REALTIME_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	NEON_REALTIME_SECRET?: string;
+
+	@IsOptional()
 	@IsUrl(
 		{ require_tld: false, require_protocol: true },
 		{

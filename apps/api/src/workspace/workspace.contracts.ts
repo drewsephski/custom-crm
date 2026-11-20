@@ -130,3 +130,16 @@ export type MyInvitation = z.infer<typeof myInvitationOutput>;
 export const myInvitationListOutput = z.array(myInvitationOutput);
 
 export const okOutput = z.object({ ok: z.literal(true) });
+
+export const workspaceLiveOutput = z
+	.object({
+		url: z.url(),
+		sealedQuery: z.object({
+			capability: z.string(),
+			queryFingerprint: z.string(),
+			expiresAt: z.number(),
+		}),
+	})
+	.nullable();
+
+export type WorkspaceLive = z.infer<typeof workspaceLiveOutput>;

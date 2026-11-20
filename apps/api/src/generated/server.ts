@@ -33,7 +33,7 @@ import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOu
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
-import { workspaceOutput, memberListInput, memberListOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, okOutput, inviteMemberInput, invitationOutput, invitationListOutput, invitationIdInput, workspaceListOutput, createWorkspaceInput, workspaceSummaryOutput, activateWorkspaceInput, myInvitationListOutput } from "../workspace/workspace.contracts";
+import { workspaceLiveOutput, workspaceOutput, memberListInput, memberListOutput, updateWorkspaceInput, setMemberRoleInput, workspaceMemberOutput, removeMemberInput, okOutput, inviteMemberInput, invitationOutput, invitationListOutput, invitationIdInput, workspaceListOutput, createWorkspaceInput, workspaceSummaryOutput, activateWorkspaceInput, myInvitationListOutput } from "../workspace/workspace.contracts";
 import { configStateOutput, proposeInput, configVersionOutput, editInput, planInput, applyInput, applyOutput } from "../workspace-config/workspace-config.contracts";
 import { pipelinePlanOutput } from "../workspace-config/../pipeline/pipeline.contracts";
 import type { UsersRouter } from "../users/users.router";
@@ -801,6 +801,9 @@ const appRouter = t.router({
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any)
     }),
   workspace: t.router({
+    membersLive: publicProcedure
+      .output(workspaceLiveOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     get: publicProcedure
       .output(workspaceOutput)
       .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),

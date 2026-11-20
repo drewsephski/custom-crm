@@ -8,6 +8,7 @@ import {
 	StageOutcome,
 } from "@crm/db";
 import { RETIRED_OUTCOME } from "@crm/db/agent-tasks";
+import { blobEnabled } from "@crm/db/blob";
 import { configuredAgentModel } from "@crm/db/settings";
 import { runAsSystem } from "@crm/db/tenancy";
 import { CONTACT_CAP_REASON } from "@crm/db/tracking";
@@ -156,7 +157,7 @@ export class RollupService {
 
 			cap_perplexity: isSet("PERPLEXITY_API_KEY"),
 			cap_context_dev: Boolean(contextKey?.contextDevApiKey?.trim()),
-			cap_blob: isSet("BLOB_READ_WRITE_TOKEN"),
+			cap_blob: blobEnabled(),
 			cap_github: isSet("GITHUB_TOKEN"),
 			cap_redis: isSet("REDIS_URL"),
 			cap_agent_bridge: isSet("AGENT_BRIDGE_SECRET"),

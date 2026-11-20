@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import pg from "pg";
+import { directDatabaseUrl } from "../src/database-host";
 
 const SCHEMA = join(dirname(import.meta.dirname), "prisma", "schema.prisma");
 const MIGRATIONS = join(dirname(import.meta.dirname), "prisma", "migrations");
@@ -45,9 +46,9 @@ async function create(
 	database: string,
 	forced: boolean,
 ): Promise<void> {
-	const maintenance = new URL(target);
+	const maintenance = new URL(directDatabaseUrl(target));
 	maintenance.pathname = "/postgres";
-	maintenance.search = "";
+	maintenance.searchParams.delete("schema");
 
 	const client = new pg.Client({ connectionString: maintenance.toString() });
 
@@ -121,7 +122,9 @@ async function stale(target: string, database: string): Promise<string | null> {
 }
 
 async function appliedMigrations(target: string): Promise<string[] | null> {
-	const client = new pg.Client({ connectionString: target });
+	const client = new pg.Client({
+		connectionString: directDatabaseUrl(target),
+	});
 
 	try {
 		await client.connect();

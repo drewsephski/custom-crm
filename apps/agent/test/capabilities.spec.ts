@@ -11,7 +11,11 @@ import {
 	unavailable,
 } from "../agent/lib/capabilities";
 
-const KEYS = ["PERPLEXITY_API_KEY", "BLOB_READ_WRITE_TOKEN"] as const;
+const KEYS = [
+	"PERPLEXITY_API_KEY",
+	"BLOB_READ_WRITE_TOKEN",
+	"S3_PUBLIC_BUCKET",
+] as const;
 
 const saved: Record<string, string | undefined> = {};
 

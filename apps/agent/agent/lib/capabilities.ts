@@ -1,6 +1,7 @@
 import "@crm/env/load";
 
 import { db } from "@crm/db";
+import { blobEnabled } from "@crm/db/blob";
 import { readContextDevKey } from "@crm/db/settings";
 import { forEachOrganization } from "./organizations";
 
@@ -78,7 +79,9 @@ export function capabilitiesFrom(
 			enabled: contextDev !== null,
 		},
 		{
-			...fromEnv("BLOB_READ_WRITE_TOKEN"),
+			id: "BLOB_READ_WRITE_TOKEN",
+			from: "BLOB_READ_WRITE_TOKEN or S3_PUBLIC_BUCKET",
+			enabled: blobEnabled(),
 			label: "Picture storage",
 			gives:
 				"somewhere to keep a logo or a profile photo. Without it a record has no picture at all, because the URLs these sources hand back expire and are never stored as they are",

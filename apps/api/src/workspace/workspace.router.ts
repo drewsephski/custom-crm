@@ -22,17 +22,28 @@ import {
 	removeMemberInput,
 	setMemberRoleInput,
 	updateWorkspaceInput,
+	workspaceLiveOutput,
 	workspaceMemberOutput,
 	workspaceOutput,
 } from "./workspace.contracts";
 import { WorkspaceService } from "./workspace.service";
+import { WorkspaceLiveService } from "./workspace-live.service";
 
 @Router({ alias: "workspace" })
 @UseMiddlewares(AuthMiddleware)
 export class WorkspaceRouter {
 	constructor(
 		@Inject(WorkspaceService) private readonly workspace: WorkspaceService,
+		@Inject(WorkspaceLiveService) private readonly live: WorkspaceLiveService,
 	) {}
+
+	@Query({
+		output: workspaceLiveOutput,
+		meta: restMeta("GET", "/workspace/members/live", ["Workspace"]),
+	})
+	async membersLive(@Ctx() ctx: AuthedTrpcContext) {
+		return this.live.membership(ctx.user.id);
+	}
 
 	@Query({
 		output: workspaceOutput,
