@@ -1,5 +1,6 @@
 const SETUP_SEGMENTS = new Set([
 	"onboarding",
+	"get-started",
 	"invitations",
 	"grant-access",
 	"sign-in",

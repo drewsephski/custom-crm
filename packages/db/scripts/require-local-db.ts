@@ -1,20 +1,14 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { parseEnv } from "@crm/env";
 import {
-	DATABASE_HOST,
-	databaseHost,
-	isLocalHost,
-	parseDevHosts,
-} from "../src/database-host";
-
-const ROOT_ENV_FILES = [".env.local", ".env"] as const;
+	DATABASE_GUARD,
+	type GuardDecision,
+	guardDevelopmentCommand,
+} from "../src/database-guard";
+import { guardSources } from "./guard-env";
 
 const command = process.argv[2] ?? "this command";
-const rootEnv = readRootEnv();
-const resolved = resolveDatabaseUrl();
+const decisions = guardDevelopmentCommand(guardSources());
 
-if (!resolved) {
+if (decisions.length === 0) {
 	console.error(
 		`\n  ${command} needs DATABASE_URL, and nothing set it.` +
 			"\n  Copy .env.example to .env at the repo root.\n",
@@ -22,31 +16,63 @@ if (!resolved) {
 	process.exit(1);
 }
 
-const host = databaseHost(resolved.url);
+const refused = decisions.find((decision) => !decision.allowed);
 
-if (isLocalHost(host)) process.exit(0);
-
-if (devHosts().includes(host.toLowerCase())) {
-	console.warn(
-		`\n  ${command} is running against ${host}, a development database named in ${DATABASE_HOST.devHostsVariable}.\n`,
-	);
-	process.exit(0);
+if (refused) {
+	console.error(refusal(refused));
+	process.exit(1);
 }
 
-if (process.env.ALLOW_REMOTE_DB === "1") {
-	console.warn(`\n  ⚠ ${command} is running against ${host} — not local.\n`);
-	process.exit(0);
+for (const decision of decisions) {
+	if (decision.reason === "development") {
+		console.warn(
+			`\n  ${command} is running against ${decision.target.host}, a development database named in ${DATABASE_GUARD.devHostsVariable}.\n`,
+		);
+	}
+	if (decision.reason === "override") {
+		console.warn(
+			`\n  ⚠ ${command} is running against ${decision.target.host} — not local.\n`,
+		);
+	}
 }
 
-console.error(
-	[
+function refusal({ reason, target }: GuardDecision): string {
+	const head = [
 		"",
-		`  Refusing to run ${command} against ${host}.`,
+		`  Refusing to run ${command} against ${target.host}.`,
+		`  The value came from ${target.from}.`,
 		"",
-		`  That is not a local database, and ${command} can rewrite or drop`,
-		`  schemas. The value came from ${resolved.from}.`,
+	];
+
+	if (reason === "protected-branch") {
+		return [
+			...head,
+			`  ${DATABASE_GUARD.branchVariable} is "${target.branch}", a protected Neon branch.`,
+			`  ${command} can rewrite or drop schemas. No override exists for it.`,
+			"",
+			"  Work on a development branch instead:",
+			"",
+			"    neon checkout development",
+			"",
+			"  Migrations reach production through `bun run db:deploy` on a release.",
+			"",
+		].join("\n");
+	}
+
+	if (reason === "protected-host") {
+		return [
+			...head,
+			`  That host is listed in ${DATABASE_GUARD.protectedHostsVariable}.`,
+			`  ${command} can rewrite or drop schemas. No override exists for it.`,
+			"",
+		].join("\n");
+	}
+
+	return [
+		...head,
+		`  That is not a local database, and ${command} can rewrite or drop schemas.`,
 		"",
-		resolved.from.endsWith(".env.local")
+		target.from.endsWith(".env.local")
 			? [
 					"  `.env.local` overrides `.env`, and `vercel env pull` writes",
 					"  production credentials into it. Either remove DATABASE_URL from",
@@ -56,68 +82,13 @@ console.error(
 				].join("\n")
 			: "  Check which file is winning:  grep -m1 DATABASE_URL .env .env.local",
 		"",
-		"  To do this deliberately anyway:",
-		"",
-		`    ALLOW_REMOTE_DB=1 bun run ${command}`,
-		"",
 		"  If this host is a development database, name it in .env:",
 		"",
-		`    ${DATABASE_HOST.devHostsVariable}="${host}"`,
+		`    ${DATABASE_GUARD.devHostsVariable}="${target.host}"`,
 		"",
-	].join("\n"),
-);
-
-process.exit(1);
-
-type RootEnvFile = { file: string; values: Record<string, string> };
-
-function readRootEnv(): RootEnvFile[] {
-	const root = workspaceRoot();
-	if (!root) return [];
-
-	const files: RootEnvFile[] = [];
-	for (const file of ROOT_ENV_FILES) {
-		try {
-			files.push({
-				file,
-				values: parseEnv(readFileSync(join(root, file), "utf8")),
-			});
-		} catch {}
-	}
-	return files;
-}
-
-function resolveDatabaseUrl(): { url: string; from: string } | null {
-	for (const { file, values } of rootEnv) {
-		if (values.DATABASE_URL) return { url: values.DATABASE_URL, from: file };
-	}
-
-	const fromEnvironment = process.env.DATABASE_URL;
-	return fromEnvironment
-		? { url: fromEnvironment, from: "the environment" }
-		: null;
-}
-
-function devHosts(): string[] {
-	const declared = rootEnv.find(
-		({ values }) => values[DATABASE_HOST.devHostsVariable] !== undefined,
-	);
-	return parseDevHosts(declared?.values[DATABASE_HOST.devHostsVariable]);
-}
-
-function workspaceRoot(): string | null {
-	let directory = process.cwd();
-
-	while (true) {
-		try {
-			const manifest = JSON.parse(
-				readFileSync(join(directory, "package.json"), "utf8"),
-			) as { workspaces?: unknown };
-			if (manifest.workspaces) return directory;
-		} catch {}
-
-		const parent = dirname(directory);
-		if (parent === directory) return null;
-		directory = parent;
-	}
+		"  To do this deliberately anyway:",
+		"",
+		`    ${DATABASE_GUARD.allowRemoteVariable}=1 bun run ${command}`,
+		"",
+	].join("\n");
 }

@@ -11,6 +11,7 @@
 		"./blob": "./src/blob.ts",
 		"./client": "./src/client.ts",
 		"./currency": "./src/currency.ts",
+		"./database-host": "./src/database-host.ts",
 		"./crm-events": "./src/crm-events.ts",
 		"./pipeline": "./src/pipeline.ts",
 		"./pipeline-defaults": "./src/pipeline-defaults.ts",
@@ -36,7 +37,7 @@
 	"scripts": {
 		"build": "prisma generate",
 		"check-types": "tsc --noEmit",
-		"db:deploy": "prisma migrate deploy",
+		"db:deploy": "bun scripts/require-deploy-target.ts && prisma migrate deploy",
 		"db:generate": "prisma generate",
 		"db:migrate": "bun scripts/require-local-db.ts db:migrate && prisma migrate dev",
 		"db:push": "bun scripts/require-local-db.ts db:push && prisma db push",
