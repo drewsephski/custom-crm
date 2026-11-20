@@ -1,3 +1,4 @@
+import { agentCommandBridge } from "@crm/env/service-urls";
 import {
 	type BrandPreviewRequest,
 	type BrandPreviewResponse,
@@ -5,7 +6,6 @@ import {
 	brandPreviewResponse,
 } from "@crm/validation/onboarding-brand";
 import { Injectable, Logger } from "@nestjs/common";
-import { bridge } from "../agent/bridge";
 import { ONBOARDING } from "./onboarding.config";
 
 const UNAVAILABLE: BrandPreviewResponse = { status: "unavailable" };
@@ -15,20 +15,15 @@ export class BrandPreviewClient {
 	private readonly logger = new Logger(BrandPreviewClient.name);
 
 	available(): boolean {
-		return bridge() !== null;
+		return agentCommandBridge() !== null;
 	}
 
 	async preview(request: BrandPreviewRequest): Promise<BrandPreviewResponse> {
-		const agent = bridge();
+		const agent = agentCommandBridge();
 		if (!agent) return UNAVAILABLE;
 
 		try {
-			const response = await fetch(agent.url(ONBOARDING.brand.path), {
-				method: "POST",
-				headers: {
-					authorization: `Bearer ${agent.secret}`,
-					"content-type": "application/json",
-				},
+			const response = await agent.post(ONBOARDING.brand.path, {
 				body: JSON.stringify(brandPreviewRequest.parse(request)),
 				signal: AbortSignal.timeout(ONBOARDING.brand.timeoutMs),
 			});

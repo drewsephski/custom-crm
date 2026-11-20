@@ -192,6 +192,18 @@ export class EnvironmentVariables {
 
 	@IsOptional()
 	@IsString()
+	VERCEL_ENV?: string;
+
+	@IsOptional()
+	@IsString()
+	VERCEL_URL?: string;
+
+	@IsOptional()
+	@IsString()
+	VERCEL_AUTOMATION_BYPASS_SECRET?: string;
+
+	@IsOptional()
+	@IsString()
 	AGENT_BRIDGE_SECRET?: string;
 
 	@IsOptional()

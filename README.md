@@ -396,7 +396,9 @@ The link sets the local session cookie and opens the app. It refuses to run with
 Import the repository root as one Vercel project. The root `vercel.json` builds the app, API, and Eve agent separately.
 Set `API_URL` and `APP_URL` to the same public HTTPS origin for each environment.
 Register `/api/auth/callback/google` and `/api/auth/callback/microsoft` on that origin for the providers you use.
-Vercel supplies `INTERNAL_API_URL` and `INTERNAL_AGENT_URL` through service bindings.
+The app has private bindings to the API and agent. The agent uses its private API binding for MCP tokens.
+The API and agent send authenticated commands through six project routes under `/internal/crm/`.
+Enable Protection Bypass for Automation for protected deployments. Vercel supplies `VERCEL_AUTOMATION_BYPASS_SECRET`.
 
 Set `DATABASE_URL` and `BETTER_AUTH_SECRET` for the project. The production API build applies database migrations.
 Set `AGENT_BRIDGE_SECRET` for agent sessions and internal dispatch.

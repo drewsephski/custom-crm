@@ -1,11 +1,11 @@
 import { requireOrganizationId } from "@crm/db/tenancy";
+import { agentCommandBridge } from "@crm/env/service-urls";
 import {
 	BadRequestException,
 	Injectable,
 	Logger,
 	ServiceUnavailableException,
 } from "@nestjs/common";
-import { bridge } from "../agent/bridge";
 import { slackCreateChannelReply } from "./slack.contracts";
 
 const CREATE_TIMEOUT_MS = 20_000;
@@ -17,7 +17,7 @@ export class SlackChannelsService {
 	private readonly logger = new Logger(SlackChannelsService.name);
 
 	async create(name: string, isPrivate: boolean) {
-		const agent = bridge();
+		const agent = agentCommandBridge();
 
 		if (!agent) {
 			throw new ServiceUnavailableException(
@@ -28,12 +28,7 @@ export class SlackChannelsService {
 		let response: Response;
 
 		try {
-			response = await fetch(agent.url("/internal/crm/slack/create-channel"), {
-				method: "POST",
-				headers: {
-					authorization: `Bearer ${agent.secret}`,
-					"content-type": "application/json",
-				},
+			response = await agent.post("/internal/crm/slack/create-channel", {
 				body: JSON.stringify({
 					type: "slack.channel.create",
 					channelName: name,

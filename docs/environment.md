@@ -93,8 +93,13 @@ production.
 ## Where things are
 
 - **`API_URL`** is the public API origin for OAuth callbacks and sign-in. Set it to the shared origin on Vercel.
-- Vercel injects **`INTERNAL_API_URL`** and **`INTERNAL_AGENT_URL`** into the functions that call each service.
-  Leave these variables unset in project settings. Local services use `API_URL` and `AGENT_URL`.
+- Vercel supplies `INTERNAL_API_URL` to the app and agent. It supplies `INTERNAL_AGENT_URL` to the app.
+  Leave these variables unset in project settings.
+- Agent commands use the project router and require `AGENT_BRIDGE_SECRET`.
+  Protected deployments require Protection Bypass for Automation.
+  Vercel supplies `VERCEL_URL` and `VERCEL_AUTOMATION_BYPASS_SECRET` for requests to the current deployment.
+  Production uses the configured public `API_URL` when the bypass secret is absent.
+  Standalone services use `AGENT_URL`. Local Vercel services use the shared project origin in `API_URL`.
 - The app service build sets **`CRM_PROJECT_PROXY`**. The project runs the workspace proxy before routing requests to services.
 - **Editing a file under `packages/` does not restart the API. Restart it by hand.**
   `bun --watch src/main.ts` refuses to watch outside its project directory and

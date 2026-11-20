@@ -4,11 +4,11 @@ import { CRM_EVENT_CATALOG, type CrmEventType } from "@crm/db/crm-events";
 import { RECORD_ID_COLUMNS } from "@crm/db/fields";
 import { lockIdempotencyKey } from "@crm/db/idempotency";
 import { runAsSystem } from "@crm/db/tenancy";
+import { agentCommandBridge } from "@crm/env/service-urls";
 import { fieldBackfillPayload } from "@crm/validation/field-backfill";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectDatabase } from "../database/database.constants";
 import { AGENT_DISPATCH } from "./agent-dispatch.config";
-import { bridge } from "./bridge";
 
 export type CrmEventInput = {
 	[Type in CrmEventType]: {
@@ -607,7 +607,7 @@ export class AgentTriggerService {
 	}
 
 	canReachAgent(): boolean {
-		return bridge() !== null;
+		return agentCommandBridge() !== null;
 	}
 
 	mcpToolDiscoveryQueued(): void {
@@ -633,18 +633,11 @@ export class AgentTriggerService {
 		path: string,
 		body?: Record<string, string>,
 	): Promise<boolean> {
-		const agent = bridge();
+		const agent = agentCommandBridge();
 		if (!agent) return false;
 
 		try {
-			const headers = new Headers({
-				authorization: `Bearer ${agent.secret}`,
-			});
-			if (body) headers.set("content-type", "application/json");
-
-			const response = await fetch(agent.url(path), {
-				method: "POST",
-				headers,
+			const response = await agent.post(path, {
 				body: body ? JSON.stringify(body) : undefined,
 				signal: AbortSignal.timeout(AGENT_DISPATCH.poke.timeoutMs),
 			});

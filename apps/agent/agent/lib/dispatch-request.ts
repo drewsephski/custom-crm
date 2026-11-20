@@ -1,16 +1,14 @@
-import { agentServiceUrl } from "@crm/env/service-urls";
+import { agentCommandBridge } from "@crm/env/service-urls";
 import { DISPATCH } from "./dispatch-config";
 
 export type DispatchRequest = () => void;
 
 export async function postDispatch(): Promise<boolean> {
-	const secret = process.env.AGENT_BRIDGE_SECRET?.trim();
-	if (!secret) return false;
+	const agent = agentCommandBridge();
+	if (!agent) return false;
 
 	try {
-		const response = await fetch(agentServiceUrl(DISPATCH.self.path), {
-			method: "POST",
-			headers: { authorization: `Bearer ${secret}` },
+		const response = await agent.post(DISPATCH.self.path, {
 			signal: AbortSignal.timeout(DISPATCH.self.timeoutMs),
 		});
 
